@@ -9,9 +9,17 @@ import { DataSource } from 'typeorm';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
-  const dataSource = app.get(DataSource); // DB 연결 가져오기
+  const dataSource = app.get(DataSource);
 
-  console.log('더미 데이터 생성을 시작합니다...');
+  console.log('기존 데이터를 삭제하고 더미 데이터 생성을 시작합니다...');
+
+  // 외래키 제약 조건을 잠시 해제하고 초기화
+  await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
+  await dataSource.getRepository(ChatMessage).clear();
+  await dataSource.getRepository(PartyMember).clear();
+  await dataSource.getRepository(Party).clear();
+  await dataSource.getRepository(User).clear();
+  await dataSource.query('SET FOREIGN_KEY_CHECKS = 1');
 
   // 1. 유저 생성
   const userRepo = dataSource.getRepository(User);
@@ -20,17 +28,19 @@ async function bootstrap() {
     email: 'hong@test.com',
     nickname: '홍길동',
     provider: 'EMAIL',
+    treeScore: 100,
   });
 
   const user2 = await userRepo.save({
     email: 'kim@test.com',
     nickname: '김철수',
     provider: 'EMAIL',
+    treeScore: 85,
   });
 
   console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname);
 
-  // 2. 파티 생성 (호스트: 홍길동)
+  // 2. 모임 생성 (호스트: 홍길동)
   const partyRepo = dataSource.getRepository(Party);
   const party = await partyRepo.save({
     host: user1,
@@ -39,11 +49,11 @@ async function bootstrap() {
     storeName: '코스트코 양재점',
     latitude: 37.4626,
     longitude: 127.0375,
-    maxPeople: 2,
+    meetDate: new Date('2025-11-12T15:00:00'),
     status: 'RECRUITING',
   });
 
-  console.log('✅ 파티 생성 완료:', party.title);
+  console.log('✅ 모임 생성 완료:', party.title);
 
   // 3. 멤버 참여 (홍길동, 김철수)
   const memberRepo = dataSource.getRepository(PartyMember);

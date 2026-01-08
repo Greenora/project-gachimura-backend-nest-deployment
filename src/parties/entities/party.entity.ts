@@ -33,9 +33,6 @@ export class Party {
   @Column({ name: 'meet_date', type: 'datetime', nullable: true })
   meetDate?: Date;
 
-  @Column({ name: 'max_people', default: 2 })
-  maxPeople: number;
-
   @Column({ default: 'RECRUITING' }) // RECRUITING | SEALED | CLOSED
   status: string;
 

@@ -1,26 +1,37 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Party } from './entities/party.entity';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
 
 @Injectable()
 export class PartiesService {
+  constructor(
+    @InjectRepository(Party)
+    private partyRepository: Repository<Party>,
+  ) { }
+
   create(createPartyDto: CreatePartyDto) {
-    return 'This action adds a new party';
+    const newParty = this.partyRepository.create(createPartyDto);
+    return this.partyRepository.save(newParty);
   }
 
   findAll() {
-    return `This action returns all parties`;
+    return this.partyRepository.find();
   }
 
   findOne(id: number) {
-    return `This action returns a #${id} party`;
+    return this.partyRepository.findOne({
+      where: { id },
+    });
   }
 
   update(id: number, updatePartyDto: UpdatePartyDto) {
-    return `This action updates a #${id} party`;
+    return this.partyRepository.update(id, updatePartyDto);
   }
 
   remove(id: number) {
-    return `This action removes a #${id} party`;
+    return this.partyRepository.delete(id);
   }
 }
