@@ -23,6 +23,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException();
     }
     // req.user에 이 정보를 넣어줌 -> 이제 컨트롤러에서 쓸 수 있음
-    return { id: payload.sub, email: payload.email, nickname: payload.nickname };
+    return {
+      id: payload.sub,
+      email: payload.email,
+      nickname: payload.nickname,
+    };
   }
 }

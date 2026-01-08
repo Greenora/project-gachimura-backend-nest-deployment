@@ -7,7 +7,7 @@ import * as bcrypt from 'bcrypt';
 export class AuthService {
   constructor(
     private readonly usersService: UsersService, // 1. 유저 서비스 가져오기
-    private readonly jwtService: JwtService,     // 2. 토큰 서비스 가져오기
+    private readonly jwtService: JwtService, // 2. 토큰 서비스 가져오기
   ) {}
 
   async checkEmail(email: string) {
@@ -34,7 +34,7 @@ export class AuthService {
     // 비밀번호 확인 (DB의 암호화된 비번 vs 입력한 비번 비교)
     // 소셜 로그인 유저는 비밀번호가 없을 수 있으므로 체크
     if (!user.password) {
-        throw new UnauthorizedException('소셜 로그인으로 가입된 계정입니다.');
+      throw new UnauthorizedException('소셜 로그인으로 가입된 계정입니다.');
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
@@ -43,7 +43,11 @@ export class AuthService {
     }
 
     // 토큰 발급
-    const payload = { email: user.email, sub: user.id, nickname: user.nickname };
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      nickname: user.nickname,
+    };
     return {
       accessToken: this.jwtService.sign(payload),
       user: { email: user.email, nickname: user.nickname },
@@ -56,10 +60,10 @@ export class AuthService {
     const user = result.user; // { message, user } 형태니까 user만 꺼냄
 
     // 토큰에 넣을 정보 (Payload) 정하기
-    const payload = { 
-      email: user.email, 
-      sub: user.id,        // sub는 토큰 주인의 ID를 뜻하는 표준 필드
-      nickname: user.nickname 
+    const payload = {
+      email: user.email,
+      sub: user.id, // sub는 토큰 주인의 ID를 뜻하는 표준 필드
+      nickname: user.nickname,
     };
 
     // 진짜 JWT 토큰 발급!

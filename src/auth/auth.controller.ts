@@ -5,9 +5,9 @@ import { AuthService } from './auth.service';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  // 이메일 체크 
+  // 이메일 체크
   @Post('check')
-  async checkEmail(@Body() body: {email: string}) {
+  async checkEmail(@Body() body: { email: string }) {
     return await this.authService.checkEmail(body.email);
   }
 
