@@ -15,6 +15,7 @@ interface ChatPayload {
   partyId: number;
   message: string;
   nickname: string;
+  profileImage?: string | null;
 }
 
 import { PartyMember } from '../party-members/entities/party-member.entity';
