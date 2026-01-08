@@ -1,34 +1,49 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body } from '@nestjs/common';
 import { PartyMembersService } from './party-members.service';
-import { CreatePartyMemberDto } from './dto/create-party-member.dto';
-import { UpdatePartyMemberDto } from './dto/update-party-member.dto';
+import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
+import { UpdatePartyMemberStatusDto } from './dto/party-member.dto';
 
+@ApiTags('party')
 @Controller('party-members')
 export class PartyMembersController {
-  constructor(private readonly partyMembersService: PartyMembersService) {}
+  constructor(private readonly partyMembersService: PartyMembersService) { }
 
-  @Post()
-  create(@Body() createPartyMemberDto: CreatePartyMemberDto) {
-    return this.partyMembersService.create(createPartyMemberDto);
+  @Get(':partyId')
+  @ApiOperation({ summary: '모임 멤버 목록 조회', description: '특정 모임에 참여 중인 유저 목록과 그들의 상세 정보를 가져옵니다.' })
+  findAll(@Param('partyId') partyId: number) {
+    return this.partyMembersService.findAllByParty(partyId);
   }
 
-  @Get()
-  findAll() {
-    return this.partyMembersService.findAll();
+  @Post(':partyId/:userId')
+  @ApiOperation({ summary: '모임 가입 신청', description: '특정 모임에 가입을 신청합니다. 초기 상태는 PENDING입니다.' })
+  create(@Param('partyId') partyId: number, @Param('userId') userId: number) {
+    return this.partyMembersService.create(partyId, userId);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.partyMembersService.findOne(+id);
+  @Patch(':partyId/:userId/status')
+  @ApiOperation({ summary: '모임 멤버 상태 변경', description: '방장이 멤버의 상태를 APPROVE 또는 REJECT로 변경합니다.' })
+  @ApiBody({ type: UpdatePartyMemberStatusDto })
+  updateStatus(
+    @Param('partyId') partyId: number,
+    @Param('userId') userId: number,
+    @Body() updateDto: UpdatePartyMemberStatusDto
+  ) {
+    return this.partyMembersService.updateStatus(partyId, userId, updateDto.status);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updatePartyMemberDto: UpdatePartyMemberDto) {
-    return this.partyMembersService.update(+id, updatePartyMemberDto);
-  }
+  @Delete(':partyId/:userId')
+  @ApiOperation({ summary: '모임 멤버 삭제', description: '특정 모임에서 특정 유저를 강퇴합니다.' })
+  async remove(@Param('partyId') partyId: number, @Param('userId') userId: number) {
+    const result = await this.partyMembersService.remove(partyId, userId);
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.partyMembersService.remove(+id);
+    if (result.affected === 0) {
+      return { success: false, message: '해당하는 멤버를 찾을 수 없습니다.' };
+    }
+
+    return {
+      success: true,
+      message: '모임 멤버 삭제 성공',
+      data: { partyId, userId }
+    };
   }
 }

@@ -6,42 +6,119 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 
-/*
-  @WebSocketGateway
-  - 이 클래스를 웹소켓 게이트웨이(기지국)로 만듬
-  - cors 옵션: 프론트엔드(다른 주소, 지금은 3000이니 백엔드와 다름)에서 접속하는 것을 허락
-*/
+interface ChatPayload {
+  userId: number;
+  partyId: number;
+  message: string;
+  nickname: string;
+}
+
+import { PartyMember } from '../party-members/entities/party-member.entity';
+
 @WebSocketGateway({
   cors: {
-    origin: '*', // "모든 주소에서 접속해도 된다" (나중에는 특정 주소로 제한해야 함)
+    origin: '*',
     credentials: true,
   },
 })
 export class ChatGateway {
-  // 현재 실행 중인 소켓 서버 인스턴스를 담는 변수
-  // 이걸로 "전체 방송(emit)"을 할 수 있다
   @WebSocketServer()
   server: Server;
 
-  /*
-    - 프론트에서 'message'라는 이름으로 보낸 데이터만 여기서 받음
-    - like 라디오 주파수 맞추기?
-  */
+  // DB 저장을 위해 Repository 주입
+  constructor(
+    @InjectRepository(ChatMessage)
+    private chatRepository: Repository<ChatMessage>,
+    @InjectRepository(PartyMember)
+    private memberRepository: Repository<PartyMember>,
+  ) { }
+
+  @SubscribeMessage('joinRoom')
+  async handleJoinRoom(
+    @MessageBody() data: { userId: number; partyId: number },
+    @ConnectedSocket() client: Socket,
+  ): Promise<void> {
+    // 1. 해당 모임의 승인된 멤버인지 확인 
+    const member = await this.memberRepository.findOne({
+      where: {
+        partyId: data.partyId,
+        userId: data.userId,
+        status: 'APPROVED',
+      },
+      relations: { user: true }
+    });
+
+    if (member) {
+      // 2. 소켓 룸 입장
+      const roomName = `party_${data.partyId}`;
+      client.join(roomName);
+      console.log(`[Socket] User ${data.userId} joined room: ${roomName}`);
+
+    } else {
+      console.log(`[Socket] Access denied for User ${data.userId} to Party ${data.partyId}`);
+      client.emit('error', '해당 모임의 멤버가 아닙니다.');
+    }
+  }
+
   @SubscribeMessage('message')
-  handleMessage(
-    @MessageBody() data: string, // 프론트가 보낸 내용
-    @ConnectedSocket() client: Socket // 메시지를 보낸 사람의연결 정보
-  ): void {
+  async handleMessage(
+    @MessageBody() payload: ChatPayload,
+    @ConnectedSocket() client: Socket
+  ): Promise<void> {
+    // 1. 해당 모임의 승인된 멤버인지 다시 한 번 확인 (보안)
+    const member = await this.memberRepository.findOne({
+      where: {
+        partyId: payload.partyId,
+        userId: payload.userId,
+        status: 'APPROVED',
+      },
+    });
 
-    // 로그 찍기 (누가 뭘 보냈는지 서버 콘솔에서 확인용)
-    console.log(`Client ${client.id} sent: ${data}`);
+    if (!member) return;
 
-    /*
-      핵심 기능: 브로드캐스팅 (Broadcasting)
-      - this.server.emit: 나를 포함한 '접속한 모든 사람'에게 데이터를 보냄
-      - 만약 client.emit을 쓰면 보낸 사람한테만 답장
-    */
-    this.server.emit('message', data);
+    console.log(`[Room ${payload.partyId}] User ${payload.userId}: ${payload.message}`);
+
+    // 2. DB에 저장
+    const newChat = this.chatRepository.create({
+      partyId: payload.partyId,
+      senderId: payload.userId,
+      content: payload.message,
+      messageType: 'TALK',
+    });
+
+    const savedChat = await this.chatRepository.save(newChat);
+
+    const roomName = `party_${payload.partyId}`;
+    this.server.to(roomName).emit('message', {
+      ...payload,
+      createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString()
+    });
+  }
+
+  // 외부 서비스에서 시스템 메시지를 보낼 수 있게 하는 메서드
+  async sendSystemMessage(partyId: number, message: string) {
+    // 1. DB에 저장
+    const systemChat = this.chatRepository.create({
+      partyId,
+      senderId: null, // 시스템 메시지는 발신자가 없음
+      content: message,
+      messageType: 'SYSTEM',
+    });
+    const savedChat = await this.chatRepository.save(systemChat);
+
+    // 2. 해당 채에 전송
+    const roomName = `party_${partyId}`;
+    this.server.to(roomName).emit('message', {
+      userId: 0,
+      partyId: partyId,
+      message: message,
+      nickname: '시스템',
+      messageType: 'SYSTEM',
+      createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString()
+    });
   }
 }

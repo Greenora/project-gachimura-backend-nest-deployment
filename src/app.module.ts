@@ -12,6 +12,8 @@ import { ChatMessage } from './chat-message/entities/chat-message.entity';
 import { PartyMembersModule } from './party-members/party-members.module';
 import { PartyMember } from './party-members/entities/party-member.entity';
 
+import { ChatModule } from './chat/chat.module';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -28,9 +30,9 @@ import { PartyMember } from './party-members/entities/party-member.entity';
     PartiesModule,
     ChatMessageModule,
     PartyMembersModule,
+    ChatModule,
   ],
   controllers: [AppController],
-  providers: [AppService, ChatGateway],
-
+  providers: [AppService],
 })
 export class AppModule { }

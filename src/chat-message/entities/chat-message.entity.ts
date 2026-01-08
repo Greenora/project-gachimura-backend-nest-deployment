@@ -10,8 +10,8 @@ export class ChatMessage {
   @Column({ name: 'party_id' })
   partyId: number;
 
-  @Column({ name: 'sender_id' })
-  senderId: number;
+  @Column({ name: 'sender_id', nullable: true })
+  senderId: number | null;
 
   @Column({ type: 'text' })
   content: string;
