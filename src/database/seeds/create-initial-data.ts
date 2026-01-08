@@ -38,6 +38,13 @@ async function bootstrap() {
     treeScore: 85,
   });
 
+  const user3 = await userRepo.save({
+    email: 'lee@test.com',
+    nickname: '이길동',
+    provider: 'EMAIL',
+    treeScore: 74,
+  });
+
   console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname);
 
   // 2. 모임 생성 (호스트: 홍길동)
@@ -60,6 +67,7 @@ async function bootstrap() {
   await memberRepo.save([
     { party, user: user1, status: 'APPROVED' }, // 방장
     { party, user: user2, status: 'APPROVED' }, // 참여자
+    { party, user: user3, status: 'APPROVED' }, // 참여자
   ]);
 
   console.log('✅ 멤버 참여 완료');
