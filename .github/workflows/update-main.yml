@@ -1,0 +1,27 @@
+name: Update Main Deployment Submodule
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  update-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Main Deployment
+        uses: actions/checkout@v4
+        with:
+          repository: Greenora/project-gachimura-main-deployment
+          token: ${{ secrets.GH_PAT }}
+          ref: develop
+          submodules: true
+
+      - name: Update Backend Submodule
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git submodule update --remote backend
+          git add backend
+          git commit -m "chore: update backend submodule to latest main" || echo "No changes to commit"
+          git push origin develop
