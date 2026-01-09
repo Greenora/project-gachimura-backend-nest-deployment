@@ -10,4 +10,4 @@ import { PartyMember } from '../party-members/entities/party-member.entity';
   providers: [ChatGateway],
   exports: [ChatGateway],
 })
-export class ChatModule { }
+export class ChatModule {}

@@ -10,4 +10,4 @@ import { ChatMessage } from './entities/chat-message.entity';
   providers: [ChatMessageService],
   exports: [ChatMessageService],
 })
-export class ChatMessageModule { }
+export class ChatMessageModule {}

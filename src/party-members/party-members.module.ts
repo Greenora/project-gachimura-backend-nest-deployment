@@ -9,4 +9,4 @@ import { PartyMember } from './entities/party-member.entity';
   controllers: [PartyMembersController],
   providers: [PartyMembersService],
 })
-export class PartyMembersModule { }
+export class PartyMembersModule {}

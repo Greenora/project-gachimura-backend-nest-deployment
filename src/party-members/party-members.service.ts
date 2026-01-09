@@ -10,7 +10,7 @@ export class PartyMembersService {
     @InjectRepository(PartyMember)
     private partyMemberRepository: Repository<PartyMember>,
     private chatGateway: ChatGateway,
-  ) { }
+  ) {}
 
   findAllByParty(partyId: number) {
     return this.partyMemberRepository.find({
@@ -56,7 +56,7 @@ export class PartyMembersService {
   async updateStatus(partyId: number, userId: number, status: string) {
     const member = await this.partyMemberRepository.findOne({
       where: { partyId, userId },
-      relations: { user: true }
+      relations: { user: true },
     });
 
     if (!member) {
@@ -69,7 +69,10 @@ export class PartyMembersService {
     // 승인되었을 때 시스템 메시지 전송
     if (status === 'APPROVED') {
       const nickname = member.user?.nickname || '알 수 없음';
-      this.chatGateway.sendSystemMessage(partyId, `${nickname}님이 모임에 합류했습니다!`);
+      this.chatGateway.sendSystemMessage(
+        partyId,
+        `${nickname}님이 모임에 합류했습니다!`,
+      );
     }
 
     return saved;
@@ -79,12 +82,15 @@ export class PartyMembersService {
     // 삭제 전 닉네임 확인용 조회
     const member = await this.partyMemberRepository.findOne({
       where: { partyId, userId },
-      relations: { user: true }
+      relations: { user: true },
     });
 
     if (member) {
       const nickname = member.user?.nickname || '알 수 없음';
-      this.chatGateway.sendSystemMessage(partyId, `${nickname}님이 모임를 떠났습니다.`);
+      this.chatGateway.sendSystemMessage(
+        partyId,
+        `${nickname}님이 모임를 떠났습니다.`,
+      );
     }
 
     return this.partyMemberRepository.delete({ partyId, userId });

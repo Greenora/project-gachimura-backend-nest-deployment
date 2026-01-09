@@ -9,7 +9,7 @@ export class ChatMessageService {
   constructor(
     @InjectRepository(ChatMessage)
     private chatMessageRepository: Repository<ChatMessage>,
-  ) { }
+  ) {}
 
   findAllByParty(partyId: number) {
     return this.chatMessageRepository.find({

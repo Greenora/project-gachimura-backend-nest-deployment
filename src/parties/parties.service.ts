@@ -10,7 +10,7 @@ export class PartiesService {
   constructor(
     @InjectRepository(Party)
     private partyRepository: Repository<Party>,
-  ) { }
+  ) {}
 
   create(createPartyDto: CreatePartyDto) {
     const newParty = this.partyRepository.create(createPartyDto);

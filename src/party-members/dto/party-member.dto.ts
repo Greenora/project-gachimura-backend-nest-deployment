@@ -12,7 +12,7 @@ export class UpdatePartyMemberStatusDto {
   @ApiProperty({
     description: '상태 (APPROVED | REJECTED)',
     enum: ['APPROVED', 'REJECTED'],
-    example: 'APPROVED'
+    example: 'APPROVED',
   })
   status: string;
 }

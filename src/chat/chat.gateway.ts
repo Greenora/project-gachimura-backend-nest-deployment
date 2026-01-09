@@ -36,21 +36,21 @@ export class ChatGateway {
     private chatRepository: Repository<ChatMessage>,
     @InjectRepository(PartyMember)
     private memberRepository: Repository<PartyMember>,
-  ) { }
+  ) {}
 
   @SubscribeMessage('joinRoom')
   async handleJoinRoom(
     @MessageBody() data: { userId: number; partyId: number },
     @ConnectedSocket() client: Socket,
   ): Promise<void> {
-    // 1. 해당 모임의 승인된 멤버인지 확인 
+    // 1. 해당 모임의 승인된 멤버인지 확인
     const member = await this.memberRepository.findOne({
       where: {
         partyId: data.partyId,
         userId: data.userId,
         status: 'APPROVED',
       },
-      relations: { user: true }
+      relations: { user: true },
     });
 
     if (member) {
@@ -58,9 +58,10 @@ export class ChatGateway {
       const roomName = `party_${data.partyId}`;
       client.join(roomName);
       console.log(`[Socket] User ${data.userId} joined room: ${roomName}`);
-
     } else {
-      console.log(`[Socket] Access denied for User ${data.userId} to Party ${data.partyId}`);
+      console.log(
+        `[Socket] Access denied for User ${data.userId} to Party ${data.partyId}`,
+      );
       client.emit('error', '해당 모임의 멤버가 아닙니다.');
     }
   }
@@ -68,7 +69,7 @@ export class ChatGateway {
   @SubscribeMessage('message')
   async handleMessage(
     @MessageBody() payload: ChatPayload,
-    @ConnectedSocket() client: Socket
+    @ConnectedSocket() client: Socket,
   ): Promise<void> {
     // 1. 해당 모임의 승인된 멤버인지 다시 한 번 확인 (보안)
     const member = await this.memberRepository.findOne({
@@ -81,7 +82,9 @@ export class ChatGateway {
 
     if (!member) return;
 
-    console.log(`[Room ${payload.partyId}] User ${payload.userId}: ${payload.message}`);
+    console.log(
+      `[Room ${payload.partyId}] User ${payload.userId}: ${payload.message}`,
+    );
 
     // 2. DB에 저장
     const newChat = this.chatRepository.create({
@@ -96,7 +99,7 @@ export class ChatGateway {
     const roomName = `party_${payload.partyId}`;
     this.server.to(roomName).emit('message', {
       ...payload,
-      createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString()
+      createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString(),
     });
   }
 
@@ -119,7 +122,7 @@ export class ChatGateway {
       message: message,
       nickname: '시스템',
       messageType: 'SYSTEM',
-      createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString()
+      createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString(),
     });
   }
 }
