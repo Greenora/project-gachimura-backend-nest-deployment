@@ -18,7 +18,8 @@ export class AuthService {
   // 이메일 회원가입
   async signup(body: any) {
     // UsersService의 signUp 함수 재사용
-    return await this.usersService.signUp(body);
+    await this.usersService.signUp(body);
+    return { message: '회원가입이 완료되었습니다.' };
   }
 
   // 이메일 로그인
