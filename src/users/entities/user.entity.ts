@@ -8,8 +8,8 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column({ nullable: true }) // 소셜 로그인은 비번 없음
-  password?: string;
+  @Column({ type: 'varchar', length: 512, nullable: true }) // 소셜 로그인은 비번 없음
+  password?: string | null;
 
   @Column()
   nickname: string;

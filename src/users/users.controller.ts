@@ -13,9 +13,11 @@ export class UsersController {
   // 회원가입
   @ApiOperation({ summary: '회원가입' }) 
   @Post('/signup')
-  async signUp(@Body(ValidationPipe) createUserDto: CreateUserDto): Promise<string> {
+  async signUp(
+    @Body(ValidationPipe) createUserDto: CreateUserDto,
+  ): Promise<{ message: string }> {
     await this.usersService.signUp(createUserDto);
-    return '회원가입이 완료되었습니다.';
+    return { message: '회원가입이 완료되었습니다.' };
   }
 
   // 카카오 로그인
