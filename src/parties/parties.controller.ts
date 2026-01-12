@@ -3,14 +3,16 @@ import {
   Get,
   Post,
   Body,
-  Patch,
   Param,
-  Delete,
+  UploadedFile,
+  UseInterceptors,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
-import { UpdatePartyDto } from './dto/update-party.dto';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
 
 @ApiTags('party')
 @Controller('parties')
@@ -33,5 +35,17 @@ export class PartiesController {
   })
   findOne(@Param('id') id: string) {
     return this.partiesService.findOne(+id);
+  }
+
+  @Post()
+  @ApiOperation({
+    summary: '모임 생성',
+    description: '새로운 모임을 생성합니다.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('thumbnail_image'))
+  @UseGuards(AuthGuard('jwt'))
+  create(@Body() dto: CreatePartyDto, @UploadedFile() file: any, @Req() req) {
+    return this.partiesService.createWithFile(dto, file, req.user.id);
   }
 }

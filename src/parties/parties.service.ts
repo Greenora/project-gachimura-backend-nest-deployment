@@ -12,9 +12,48 @@ export class PartiesService {
     private partyRepository: Repository<Party>,
   ) {}
 
-  create(createPartyDto: CreatePartyDto) {
-    const newParty = this.partyRepository.create(createPartyDto);
-    return this.partyRepository.save(newParty);
+  async createWithFile(dto: CreatePartyDto, file?: any) {
+    const {
+      title,
+      content,
+      store_name,
+      address,
+      latitude,
+      longitude,
+      meetingDate,
+      meetingTime,
+    } = dto;
+
+    if (!meetingDate || !meetingTime) {
+      throw new Error('meetingDate and meetingTime are required');
+    }
+
+    if (!title) {
+      throw new Error('title is required');
+    }
+
+    if (!meetingDate || !meetingTime) {
+      throw new Error('meetingDate and meetingTime are required');
+    }
+
+    const meetDate = new Date(`${meetingDate}T${meetingTime}:00`);
+
+    const DUMMY_HOST_ID = 1;
+
+    const party = this.partyRepository.create({
+      title,
+      content,
+      storeName: store_name,
+      address,
+      latitude,
+      longitude,
+      meetDate,
+      thumbnailImage: file?.filename ?? null,
+      hostId: DUMMY_HOST_ID,
+      status: 'RECRUITING',
+    });
+
+    return this.partyRepository.save(party);
   }
 
   findAll() {
