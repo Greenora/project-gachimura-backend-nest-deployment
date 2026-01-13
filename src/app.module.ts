@@ -14,7 +14,7 @@ import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
-    // 환경변수 설정 
+    // 환경변수 설정
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
@@ -33,16 +33,17 @@ import { ChatModule } from './chat/chat.module';
         database: configService.get<string>('DB_NAME'),
         entities: [User, Party, ChatMessage, PartyMember],
         synchronize: true,
+        charset: 'utf8mb4',
       }),
     }),
     UsersModule,
-    AuthModule,         // (로그인)
-    PartiesModule,      // 팀원 (파티)
-    ChatMessageModule,  // 팀원 (채팅메시지)
+    AuthModule, // (로그인)
+    PartiesModule, // 팀원 (파티)
+    ChatMessageModule, // 팀원 (채팅메시지)
     PartyMembersModule, // 팀원 (파티멤버)
-    ChatModule,         // 팀원 (채팅)
+    ChatModule, // 팀원 (채팅)
   ],
-  controllers: [], 
+  controllers: [],
   providers: [],
 })
 export class AppModule {}
