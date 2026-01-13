@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('users')
 export class User {
@@ -29,13 +35,18 @@ export class User {
   @Column({ name: 'account_number', nullable: true })
   accountNumber?: string;
 
-  @Column({ name: 'refresh_token', nullable: true })
-  refreshToken?: string;
+  @Column({
+    name: 'refresh_token',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
+  refreshToken?: string | null;
 
-  @Column({ default: 'LOCAL' }) 
+  @Column({ default: 'LOCAL' })
   provider: string;
 
-  @Column({ nullable: true }) 
+  @Column({ nullable: true })
   sns_id?: string; // 카카오 로그인에서 사용
 
   @Column('decimal', { precision: 4, scale: 1, default: 36.5 })
