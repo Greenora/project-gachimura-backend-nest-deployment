@@ -20,6 +20,9 @@ export class User {
   @Column()
   nickname: string;
 
+  @Column({ name: 'nickname_jp', nullable: true})
+  nickname_jp?:string
+
   @Column({ name: 'profile_image', nullable: true })
   profileImage?: string;
 

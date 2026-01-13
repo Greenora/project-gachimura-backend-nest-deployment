@@ -81,8 +81,12 @@ export class AuthController {
       example: {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        expiresIn: 86400,
-        user: { email: 'user@example.com', nickname: '행복한 쿼카' },
+        expiresIn: 3600,
+        user: { 
+          email: 'user@example.com', 
+          nickname: '(랜덤 생성)',
+          nickname_jp: '(랜덤 생성)'
+        },
       },
     },
   })
@@ -124,7 +128,12 @@ export class AuthController {
       example: {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
-        user: { id: 1, email: 'kakao@kakao.com', nickname: '幸せな クオッカ' },
+        expiresIn: 3600,
+        user: { 
+          email: 'kakao@kakao.com', 
+          nickname: '(랜덤 생성)',
+          nickname_jp: '(랜덤 생성)'
+        },
       },
     },
   })
@@ -140,7 +149,7 @@ export class AuthController {
   @Post('refresh')
   @ApiOperation({
     summary: '토큰 갱신',
-    description: 'Refresh Token으로 새로운 Access Token 발급',
+    description: '로그인 시 발급받은 Refresh Token으로 새로운 Access Token을 발급받습니다. Access Token이 만료되었을 때 사용하세요.',
   })
   @ApiBody({
     schema: {
@@ -148,7 +157,8 @@ export class AuthController {
       properties: {
         refreshToken: {
           type: 'string',
-          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+          example: '로그인 응답에서 받은 refreshToken 값을 입력하세요',
+          description: '로그인 시 발급받은 Refresh Token',
         },
       },
       required: ['refreshToken'],
@@ -158,10 +168,10 @@ export class AuthController {
     status: 200,
     description: '토큰 갱신 성공',
     schema: {
-      example: { accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+      example: { accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...새로운토큰' },
     },
   })
-  @ApiResponse({ status: 401, description: '유효하지 않은 Refresh Token' })
+  @ApiResponse({ status: 401, description: '유효하지 않거나 만료된 Refresh Token' })
   async refresh(@Body() body: { refreshToken: string }) {
     return await this.authService.refresh(body.refreshToken);
   }

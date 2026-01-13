@@ -5,25 +5,31 @@ import { UsersService } from '../users/users.service';
 import { User } from '../users/entities/user.entity';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
-import type { StringValue } from 'ms';
 
+// 로그인 요청 DTO
 export interface LoginDto {
   email: string;
   password: string;
   rememberMe?: boolean;
 }
 
+// JWT 페이로드 타입
 export interface JwtPayload {
   email: string;
   sub: number;
   nickname: string;
 }
 
+// 로그인 응답 타입
 export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  user: { email: string; nickname: string };
+  user: { 
+    email: string; 
+    nickname: string; 
+    nickname_jp?: string; // 일본어 닉네임 필드 추가
+  };
 }
 
 @Injectable()
@@ -44,14 +50,15 @@ export class AuthService {
     return this.jwtService.sign(payload, { expiresIn: '1h' });
   }
 
-  // expiresIn 타입을 'string | number'로 변경
+  // Refresh Token 생성
+  // ms 타입 제거 및 as any 사용으로 에러 해결
   private generateRefreshToken(
     user: User,
     expiresIn: string | number = '7d',
   ): string {
     const payload = { sub: user.id };
     return this.jwtService.sign(payload, {
-      expiresIn: expiresIn as StringValue,
+      expiresIn: expiresIn as any, 
     });
   }
 
@@ -90,7 +97,11 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn: 3600, // AccessToken 만료 시간 (1시간)
-      user: { email: user.email, nickname: user.nickname },
+      user: { 
+        email: user.email, 
+        nickname: user.nickname,
+        nickname_jp: user.nickname_jp // 일본어 닉네임 반환
+      },
     };
   }
 
@@ -99,7 +110,6 @@ export class AuthService {
     kakaoAccessToken: string,
     language?: string,
   ): Promise<AuthResponse> {
-    // UsersService에서 반환하는 타입이 명시적이지 않을 수 있으므로 any로 받거나 추론
     const result = await this.usersService.kakaoLogin(
       kakaoAccessToken,
       language,
@@ -116,7 +126,11 @@ export class AuthService {
       accessToken,
       refreshToken,
       expiresIn: 3600,
-      user: { email: user.email, nickname: user.nickname },
+      user: { 
+        email: user.email, 
+        nickname: user.nickname,
+        nickname_jp: user.nickname_jp // 일본어 닉네임 반환
+      },
     };
   }
 

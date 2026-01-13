@@ -46,7 +46,6 @@ export class CreateUserDto {
   birthdate?: string;
 
   @ApiPropertyOptional({
-    example: '행복한 쿼카',
     description: '닉네임 (미입력시 랜덤 생성)',
   })
   @IsOptional()
