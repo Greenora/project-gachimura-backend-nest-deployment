@@ -6,6 +6,7 @@ import { Party } from '../../parties/entities/party.entity';
 import { PartyMember } from '../../party-members/entities/party-member.entity';
 import { ChatMessage } from '../../chat-message/entities/chat-message.entity';
 import { DataSource } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -23,26 +24,30 @@ async function bootstrap() {
 
   // 1. 유저 생성
   const userRepo = dataSource.getRepository(User);
+  const hashedPassword = await bcrypt.hash('password123', 10);
 
   const user1 = await userRepo.save({
     email: 'hong@test.com',
+    password: hashedPassword,
     nickname: '홍길동',
     provider: 'EMAIL',
-    treeScore: 100,
+    manner_score: 36.5,
   });
 
   const user2 = await userRepo.save({
     email: 'kim@test.com',
+    password: hashedPassword,
     nickname: '김철수',
     provider: 'EMAIL',
-    treeScore: 85,
+    manner_score: 36.5,
   });
 
   const user3 = await userRepo.save({
     email: 'lee@test.com',
+    password: hashedPassword,
     nickname: '이길동',
     provider: 'EMAIL',
-    treeScore: 74,
+    manner_score: 36.5,
   });
 
   console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname);
