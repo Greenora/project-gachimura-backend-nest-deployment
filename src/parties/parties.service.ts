@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Party } from './entities/party.entity';
@@ -12,48 +12,52 @@ export class PartiesService {
     private partyRepository: Repository<Party>,
   ) {}
 
-  async createWithFile(dto: CreatePartyDto, file?: any) {
-    const {
-      title,
-      content,
-      store_name,
-      address,
-      latitude,
-      longitude,
-      meetingDate,
-      meetingTime,
-    } = dto;
+  async createWithFile(
+    dto: CreatePartyDto,
+    file?: Express.Multer.File,
+    hostId?: number,
+  ) {
+    console.log('DTO RAW:', dto);
 
-    if (!meetingDate || !meetingTime) {
-      throw new Error('meetingDate and meetingTime are required');
+    try {
+      const {
+        title,
+        content,
+        store_name,
+        address,
+        latitude,
+        longitude,
+        meetingDate,
+        meetingTime,
+      } = dto;
+
+      if (!meetingDate || !meetingTime) {
+        throw new Error('meetingDate and meetingTime are required');
+      }
+
+      if (!title) {
+        throw new Error('title is required');
+      }
+
+      const meetDate = new Date(`${meetingDate}T${meetingTime}:00`);
+
+      const party = this.partyRepository.create({
+        title,
+        content,
+        storeName: store_name,
+        address: address || null,
+        latitude: latitude ? Number(latitude) : null,
+        longitude: longitude ? Number(longitude) : null,
+        meetDate,
+        thumbnailImage: file?.filename ?? null,
+        hostId: hostId,
+        status: 'RECRUITING',
+      } as Partial<Party>);
+
+      return this.partyRepository.save(party);
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
     }
-
-    if (!title) {
-      throw new Error('title is required');
-    }
-
-    if (!meetingDate || !meetingTime) {
-      throw new Error('meetingDate and meetingTime are required');
-    }
-
-    const meetDate = new Date(`${meetingDate}T${meetingTime}:00`);
-
-    const DUMMY_HOST_ID = 1;
-
-    const party = this.partyRepository.create({
-      title,
-      content,
-      storeName: store_name,
-      address,
-      latitude,
-      longitude,
-      meetDate,
-      thumbnailImage: file?.filename ?? null,
-      hostId: DUMMY_HOST_ID,
-      status: 'RECRUITING',
-    });
-
-    return this.partyRepository.save(party);
   }
 
   findAll() {

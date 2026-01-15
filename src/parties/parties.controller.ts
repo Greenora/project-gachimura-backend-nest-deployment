@@ -13,6 +13,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 
 @ApiTags('party')
 @Controller('parties')
@@ -46,6 +47,7 @@ export class PartiesController {
   @UseInterceptors(FileInterceptor('thumbnail_image'))
   @UseGuards(AuthGuard('jwt'))
   create(@Body() dto: CreatePartyDto, @UploadedFile() file: any, @Req() req) {
-    return this.partiesService.createWithFile(dto, file, req.user.id);
+    const hostId = req.user.id;
+    return this.partiesService.createWithFile(dto, file, hostId);
   }
 }
