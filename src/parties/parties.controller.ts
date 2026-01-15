@@ -12,10 +12,16 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
-import { ApiTags, ApiOperation, ApiConsumes } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 
 @ApiTags('party')
+@ApiBearerAuth('access-token')
 @Controller('parties')
 export class PartiesController {
   constructor(private readonly partiesService: PartiesService) {}
