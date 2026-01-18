@@ -19,6 +19,9 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import * as fs from 'fs';
 
 @ApiTags('party')
 @ApiBearerAuth('access-token')
@@ -50,7 +53,25 @@ export class PartiesController {
     description: '새로운 모임을 생성합니다.',
   })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(FileInterceptor('thumbnail_image'))
+  @UseInterceptors(
+    FileInterceptor('thumbnail_image', {
+      storage: diskStorage({
+        destination: (req, file, callback) => {
+          const uploadPath = './uploads';
+          if (!fs.existsSync(uploadPath)) {
+            fs.mkdirSync(uploadPath);
+          }
+          callback(null, uploadPath);
+        },
+        filename: (req, file, callback) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          callback(null, `${uniqueSuffix}${ext}`);
+        },
+      }),
+    }),
+  )
   @UseGuards(AuthGuard('jwt'))
   create(@Body() dto: CreatePartyDto, @UploadedFile() file: any, @Req() req) {
     const hostId = req.user.id;
