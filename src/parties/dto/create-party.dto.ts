@@ -34,13 +34,31 @@ export class CreatePartyDto {
   store_name?: string;
 
   @ApiProperty({
-    description: '상세 주소',
+    description: '상세 주소 (기본 한국어)',
     example: '서울 성동구 뚝섬로 379',
     required: false,
   })
   @IsString()
   @IsOptional()
   address?: string;
+
+  @ApiProperty({
+    description: '한국어 상세 주소',
+    example: '대구 동구 첨단로 53',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  address_ko?: string;
+
+  @ApiProperty({
+    description: '일본어 상세 주소',
+    example: '大邱広域市 東区 尖端路 53',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  address_jp?: string;
 
   @ApiProperty({
     description: '위도',
