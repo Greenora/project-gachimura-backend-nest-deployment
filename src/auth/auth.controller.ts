@@ -154,7 +154,51 @@ export class AuthController {
   // 프론트에서 LINE 인가 코드 받아서 여기로 보냄
   // redirectUri는 LINE Developers 콘솔 설정이랑 똑같아야 함
   @Post('line')
-  @ApiOperation({ summary: '라인 로그인', description: '라인 인가 코드로 로그인'})
+  @ApiOperation({
+    summary: 'LINE 로그인',
+    description:
+      'LINE 인가 코드로 로그인/회원가입. 신규 유저는 자동 가입됨',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        code: {
+          type: 'string',
+          example: 'line_authorization_code_here',
+          description: 'LINE OAuth에서 받은 인가 코드',
+        },
+        redirectUri: {
+          type: 'string',
+          example: 'http://localhost:3000/line/callback',
+          description: 'LINE Developers 콘솔에 등록한 Callback URL (100% 일치 필요)',
+        },
+        language: {
+          type: 'string',
+          example: 'ko',
+          description: '언어 설정 (ko/jp)',
+        },
+      },
+      required: ['code', 'redirectUri'],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'LINE 로그인 성공',
+    schema: {
+      example: {
+        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        expiresIn: 3600,
+        user: { 
+          email: 'U1234567890@line.me', 
+          nickname: '(랜덤 생성)',
+          nickname_jp: '(랜덤 생성)'
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 500, description: 'LINE 인증 실패' })
   async lineLogin(@Body() body: LineLoginDto) {
     return await this.authService.loginWithLine(
       body.code, 
