@@ -20,8 +20,8 @@ export class User {
   @Column()
   nickname: string;
 
-  @Column({ name: 'nickname_jp', nullable: true})
-  nickname_jp?:string
+  @Column({ name: 'nickname_jp', nullable: true })
+  nickname_jp?: string
 
   @Column({ name: 'profile_image', nullable: true })
   profileImage?: string;
@@ -53,11 +53,23 @@ export class User {
   sns_id?: string; // 카카오 로그인에서 사용
 
   @Column('decimal', { precision: 4, scale: 1, default: 36.5 })
-  manner_score: number;
+  treeScore: number;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @Column('decimal', { precision: 10, scale: 8, nullable: true })
+  latitude: number;
+
+  @Column('decimal', { precision: 11, scale: 8, nullable: true })
+  longitude: number;
+
+  @Column({ nullable: true })
+  region: string;
+
+  @Column({ nullable: true })
+  district: string;
 }
