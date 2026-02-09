@@ -31,7 +31,7 @@ async function bootstrap() {
     password: hashedPassword,
     nickname: '코끼리',
     provider: 'EMAIL',
-    manner_score: 36.5,
+    treeScore: 100,
     latitude: 37.4626,
     longitude: 127.0375,
     region: '대구광역시',
@@ -43,7 +43,7 @@ async function bootstrap() {
     password: hashedPassword,
     nickname: '김철수',
     provider: 'EMAIL',
-    manner_score: 36.5,
+    treeScore: 85,
     latitude: 37.5665,
     longitude: 126.9780,
     region: '서울특별시',
@@ -55,7 +55,7 @@ async function bootstrap() {
     password: hashedPassword,
     nickname: '기린',
     provider: 'EMAIL',
-    manner_score: 36.5,
+    treeScore: 74,
     latitude: 35.1796,
     longitude: 129.0756,
     region: '부산광역시',
@@ -72,6 +72,8 @@ async function bootstrap() {
       title: '코스트코 소고기 같이 사요',
       content: '양이 너무 많아서 반 나누실 분 구합니다.',
       storeName: '코스트코 양재점',
+      addressKo: '서울 서초구 양재대로 159',
+      addressJp: 'ソウル瑞草区良才大路159',
       latitude: 37.4626,
       longitude: 127.0375,
       meetDate: new Date('2026-11-12T15:00:00'),
@@ -82,10 +84,12 @@ async function bootstrap() {
       title: '이마트에서 1+1 상품 나눠요',
       content: '이마트 1+1 상품 함께 나눠요~',
       storeName: '이마트 칠성점',
+      addressKo: '대구 북구 침산로 158',
+      addressJp: 'テグ北区砧門路158',
       latitude: 20.4626,
       longitude: 187.0375,
       meetDate: new Date('2025-11-12T15:00:00'),
-      status: 'COMPLETED', // 끝남 모임
+      status: 'COMPLETED',
     }
   ]);
 
@@ -104,7 +108,7 @@ async function bootstrap() {
 
   console.log('✅ 멤버 참여 완료');
 
-  // 4. 초기 채팅 메시지 (p1에만 생성)
+  // 4. 초기 채팅 메시지
   const chatRepo = dataSource.getRepository(ChatMessage);
   await chatRepo.save([
     { party: p1, sender: user1, content: '안녕하세요! 고기 나누실 분?' },
