@@ -12,12 +12,13 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiParam } from '@ne
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
 
+// 유저 정보 조회 API
 @ApiTags('Users')
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
 
-  // 내 프로필 조회 (로그인 필수)
+  // 내 프로필 조회 (JWT 인증 필요, req.user에 자동으로 담김)
   @Get('profile')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('access-token')
@@ -32,8 +33,8 @@ export class UsersController {
       example: {
         id: 1,
         email: 'user@example.com',
-        nickname: '(랜덤 생성)',
-        nickname_jp: '(랜덤 생성)',
+        nickname: '행복한 고양이',
+        nickname_jp: '楽しい 猫',
         profileImage: null,
         provider: 'LOCAL',
       },
@@ -44,7 +45,7 @@ export class UsersController {
     return req.user;
   }
 
-  // 특정 유저 ID로 조회
+  // 특정 유저 조회 (로그인 불필요, 공개 정보만 반환)
   @Get(':id')
   @ApiOperation({
     summary: '특정 유저 조회',
@@ -63,7 +64,7 @@ export class UsersController {
       example: {
         id: 1,
         email: 'user@example.com',
-        nickname: '(랜덤 생성)',
+        nickname: '행복한 고양이',
         profileImage: null,
       },
     },

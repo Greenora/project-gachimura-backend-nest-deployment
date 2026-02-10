@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Party } from './entities/party.entity';
@@ -12,9 +12,56 @@ export class PartiesService {
     private partyRepository: Repository<Party>,
   ) { }
 
-  create(createPartyDto: CreatePartyDto) {
-    const newParty = this.partyRepository.create(createPartyDto);
-    return this.partyRepository.save(newParty);
+  async createWithFile(
+    dto: CreatePartyDto,
+    file?: Express.Multer.File,
+    hostId?: number,
+  ) {
+    console.log('DTO RAW:', dto);
+
+    try {
+      const {
+        title,
+        content,
+        store_name,
+        address,
+        address_ko,
+        address_jp,
+        latitude,
+        longitude,
+        meetingDate,
+        meetingTime,
+      } = dto;
+
+      if (!meetingDate || !meetingTime) {
+        throw new Error('meetingDate and meetingTime are required');
+      }
+
+      if (!title) {
+        throw new Error('title is required');
+      }
+
+      const meetDate = new Date(`${meetingDate}T${meetingTime}:00`);
+
+      const party = this.partyRepository.create({
+        title,
+        content,
+        storeName: store_name,
+        address: address || null,
+        addressKo: address_ko || null,
+        addressJp: address_jp || null,
+        latitude: latitude ? Number(latitude) : null,
+        longitude: longitude ? Number(longitude) : null,
+        meetDate,
+        thumbnailImage: file?.filename ?? null,
+        hostId: hostId,
+        status: 'RECRUITING',
+      } as Partial<Party>);
+
+      return this.partyRepository.save(party);
+    } catch (error: any) {
+      throw new BadRequestException(error.message);
+    }
   }
 
   findAll(search?: string, sort: string = 'latest', showCompleted: boolean = true) {

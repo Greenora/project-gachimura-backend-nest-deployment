@@ -1,9 +1,21 @@
+/**
+ * 랜덤 닉네임 생성용 데이터
+ * 
+ * 회원가입할 때 닉네임 안정하면 여기서 랜덤으로 생성해줌
+ * 형식: "형용사 + 동물" (예: "행복한 고양이", "楽しい 犬")
+ * 
+ * 한국어랑 일본어 닉네임을 같은 순서로 배열해놔서
+ * 한 유저가 한/일 닉네임을 둘 다 가지게 됨
+ */
+
 // 닉네임 데이터 타입 정의
 export interface NicknameDataEntry {
-  adjectives: string[];
-  animals: string[];
+  adjectives: string[]; // 형용사 목록 (행복한, 귀여운 등)
+  animals: string[];    // 동물 목록 (고양이, 강아지 등)
 }
 
+// 언어별로 닉네임 데이터를 저장하는 타입
+// 'ko', 'jp' 같은 키로 접근 가능
 export type NicknameData = Record<string, NicknameDataEntry>;
 
 export const NICKNAME_DATA: NicknameData = {

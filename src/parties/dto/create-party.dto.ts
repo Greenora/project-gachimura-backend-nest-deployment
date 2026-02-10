@@ -1,43 +1,100 @@
-import { IsString, IsOptional, IsNumber, IsDateString } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsNumberString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreatePartyDto {
-  @ApiProperty({ description: '모임 제목' })
+  @ApiProperty({
+    description: '모임 제목',
+    example: '[costco] 연어 필렛 같이 사실 분',
+  })
   @IsString()
+  @IsNotEmpty()
   title: string;
 
-  @ApiProperty({ description: '모임 내용', required: false })
+  @ApiProperty({
+    description: '모임 상세 설명',
+    example: '코스트코 대구점에서 연어 같이 사실 분 구해요!',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   content?: string;
 
-  @ApiProperty({ description: '가게 이름', required: false })
+  @ApiProperty({
+    description: '마트 이름',
+    example: '코스트코 대구점',
+    required: false,
+  })
   @IsString()
   @IsOptional()
-  storeName?: string;
+  store_name?: string;
 
-  @ApiProperty({ description: '주소 (한국어)', required: false })
+  @ApiProperty({
+    description: '상세 주소 (기본)',
+    example: '서울 성동구 뚝섬로 379',
+    required: false,
+  })
   @IsString()
   @IsOptional()
-  addressKo?: string;
+  address?: string;
 
-  @ApiProperty({ description: '주소 (일본어)', required: false })
+  @ApiProperty({
+    description: '한국어 상세 주소',
+    example: '대구 동구 첨단로 53',
+    required: false,
+  })
   @IsString()
   @IsOptional()
-  addressJp?: string;
+  address_ko?: string;
 
-  @ApiProperty({ description: '위도', required: false })
-  @IsNumber()
+  @ApiProperty({
+    description: '일본어 상세 주소',
+    example: '大邱広域市 東区 尖端路 53',
+    required: false,
+  })
+  @IsString()
   @IsOptional()
+  address_jp?: string;
+
+  @ApiProperty({
+    description: '위도',
+    example: 37.5399,
+    required: false,
+  })
+  @IsOptional()
+  @IsNumberString()
   latitude?: number;
 
-  @ApiProperty({ description: '경도', required: false })
-  @IsNumber()
+  @ApiProperty({
+    description: '경도',
+    example: 127.0536,
+    required: false,
+  })
   @IsOptional()
+  @IsNumberString()
   longitude?: number;
 
-  @ApiProperty({ description: '모임 시간', required: false })
-  @IsDateString()
+  @ApiProperty({
+    description: '모임 날짜',
+    example: '2026-02-04',
+  })
+  @IsString()
+  @IsNotEmpty()
+  meetingDate: string;
+
+  @ApiProperty({
+    description: '모임 시간',
+    example: '13:00',
+  })
+  @IsString()
+  @IsNotEmpty()
+  meetingTime: string;
+
+  @ApiProperty({
+    type: 'string',
+    format: 'binary',
+    description: '모임 대표 이미지',
+    required: false,
+  })
   @IsOptional()
-  meetDate?: string;
+  thumbnail_image?: any;
 }
