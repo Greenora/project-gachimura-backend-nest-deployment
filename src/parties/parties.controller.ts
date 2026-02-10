@@ -18,6 +18,8 @@ import {
   ApiOperation,
   ApiConsumes,
   ApiBearerAuth,
+  ApiResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { diskStorage } from 'multer';
@@ -29,7 +31,7 @@ interface AuthenticatedRequest {
   user: { id: number; email: string; nickname: string };
 }
 
-@ApiTags('party')
+@ApiTags('Parties')
 @ApiBearerAuth('access-token')
 @Controller('parties')
 export class PartiesController {
@@ -45,11 +47,43 @@ export class PartiesController {
   }
 
   @Get(':id')
-  @UseGuards(AuthGuard('jwt')) // 로그인 필요
+  @UseGuards(AuthGuard('jwt'))
   @ApiOperation({
     summary: '특정 모임 조회',
     description: 'ID를 기반으로 특정 모임의 상세 정보를 가져옵니다.',
   })
+  @ApiParam({ name: 'id', example: 1, description: '모임 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '모임 상세 조회 성공',
+    schema: {
+      example: {
+        id: 1,
+        title: '테스트 모임',
+        content: '모임 설명입니다',
+        meetingDate: '2026-02-12T07:14:00.000Z',
+        status: 'RECRUITING',
+        capacity: 4,
+        currentCount: 1,
+        images: ['image.jpg'],
+        location: {
+          name: '이마트 칠성점',
+          address: '대구광역시 북구 침산로 93',
+          lat: 35.8849145,
+          lng: 128.5900899,
+        },
+        host: {
+          id: 1,
+          nickname: '근사한 백조',
+          avatarUrl: null,
+        },
+        isJoined: false,
+        isHost: true,
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: '인증 실패' })
+  @ApiResponse({ status: 404, description: '모임을 찾을 수 없음' })
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     const partyId = parseInt(id, 10);
     if (isNaN(partyId)) {
@@ -99,6 +133,27 @@ export class PartiesController {
     summary: '모임 가입 신청',
     description: '특정 모임에 가입을 신청합니다.',
   })
+  @ApiParam({ name: 'id', example: 1, description: '모임 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '가입 신청 성공',
+    schema: {
+      example: { message: '가입 신청이 완료되었습니다!' },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: '가입 실패',
+    schema: {
+      example: {
+        message: '본인이 생성한 모임입니다.',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: '인증 실패' })
+  @ApiResponse({ status: 404, description: '모임을 찾을 수 없음' })
   async joinParty(
     @Param('id') partyId: string,
     @Req() req: AuthenticatedRequest,
