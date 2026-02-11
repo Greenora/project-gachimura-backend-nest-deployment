@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, ILike } from 'typeorm';
 import { Party } from './entities/party.entity';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
@@ -10,11 +10,11 @@ export class PartiesService {
   constructor(
     @InjectRepository(Party)
     private partyRepository: Repository<Party>,
-  ) {}
+  ) { }
 
   async createWithFile(
     dto: CreatePartyDto,
-    file?: Express.Multer.File,
+    file?: any,
     hostId?: number,
   ) {
     console.log('DTO RAW:', dto);
@@ -25,6 +25,8 @@ export class PartiesService {
         content,
         store_name,
         address,
+        address_ko,
+        address_jp,
         latitude,
         longitude,
         meetingDate,
@@ -46,6 +48,8 @@ export class PartiesService {
         content,
         storeName: store_name,
         address: address || null,
+        addressKo: address_ko || null,
+        addressJp: address_jp || null,
         latitude: latitude ? Number(latitude) : null,
         longitude: longitude ? Number(longitude) : null,
         meetDate,
@@ -60,18 +64,66 @@ export class PartiesService {
     }
   }
 
-  findAll() {
-    return this.partyRepository.find();
+  findAll(search?: string, sort: string = 'latest', showCompleted: boolean = true) {
+    // 1. 기본 검색 조건 (OR 조건)
+    let where: any = search ? [
+      { title: ILike(`%${search}%`) },
+      { content: ILike(`%${search}%`) },
+      { storeName: ILike(`%${search}%`) },
+      { addressKo: ILike(`%${search}%`) },
+      { addressJp: ILike(`%${search}%`) },
+      { host: { nickname: ILike(`%${search}%`) } },
+    ] : {};
+
+    // 2. 만료된 파티 안보기 필터링 (showCompleted === false 이면 모집중인것만)
+    if (!showCompleted) {
+      if (Array.isArray(where)) {
+        where = where.map(w => ({ ...w, status: 'RECRUITING' }));
+      } else {
+        where.status = 'RECRUITING';
+      }
+    }
+
+    // 3. 정렬 조건식
+    const order: any = {};
+    if (sort === 'imminent') {
+      order.meetDate = 'ASC'; // 가까운 일시순
+    } else {
+      order.createdAt = 'DESC'; // 최신 등록순
+    }
+
+    return this.partyRepository.find({
+      where,
+      relations: {
+        host: true,
+      },
+      order,
+    });
   }
 
   findOne(id: number) {
     return this.partyRepository.findOne({
       where: { id },
+      relations: {
+        host: true,
+      }
     });
   }
 
   update(id: number, updatePartyDto: UpdatePartyDto) {
     return this.partyRepository.update(id, updatePartyDto);
+  }
+
+  findAllByUser(userId: number) {
+    return this.partyRepository.find({
+      where: { hostId: userId },
+      relations: {
+        host: true,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
   }
 
   remove(id: number) {
