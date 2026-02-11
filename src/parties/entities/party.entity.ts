@@ -6,8 +6,10 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { PartyMember } from '../../party-members/entities/party-member.entity';
 
 @Entity('parties')
 export class Party {
@@ -41,6 +43,12 @@ export class Party {
   @Column({ name: 'meet_date', type: 'datetime', nullable: true })
   meetDate?: Date;
 
+  @Column({ default: 4 }) // 유저가 정한 최대 인원 수 (기본값 4)
+  capacity: number;
+
+  @Column({ default: 1, name: 'current_count' }) // 현재 참여 인원 수 (기본값 1, 호스트 포함)
+  currentCount: number;
+
   @Column({ default: 'RECRUITING' }) // RECRUITING | SEALED | CLOSED
   status: string;
 
@@ -53,4 +61,7 @@ export class Party {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'host_id' })
   host: User;
+
+  @OneToMany(() => PartyMember, (partyMember) => partyMember.party) // 내가 이 파티에 참여했나? 확인
+  partyMembers: PartyMember[];
 }

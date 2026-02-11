@@ -9,6 +9,7 @@ import {
   UseGuards,
   Req,
   Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -16,6 +17,8 @@ import {
   ApiOperation,
   ApiConsumes,
   ApiBearerAuth,
+  ApiResponse,
+  ApiParam,
 } from '@nestjs/swagger';
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
@@ -23,7 +26,12 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { AuthGuard } from '@nestjs/passport';
 
-@ApiTags('parties')
+// JWT 인증된 요청 타입
+interface AuthenticatedRequest {
+  user: { id: number; email: string; nickname: string };
+}
+
+@ApiTags('Parties')
 @ApiBearerAuth('access-token')
 @Controller('parties')
 export class PartiesController {
@@ -44,9 +52,21 @@ export class PartiesController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: '특정 모임 상세 조회' })
-  findOne(@Param('id') id: string) {
-    return this.partiesService.findOne(+id);
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: '특정 모임 조회',
+    description: 'ID를 기반으로 특정 모임의 상세 정보를 가져옵니다.',
+  })
+  @ApiParam({ name: 'id', example: 1, description: '모임 ID' })
+  @ApiResponse({ status: 200, description: '모임 상세 조회 성공' })
+  @ApiResponse({ status: 401, description: '인증 실패' })
+  @ApiResponse({ status: 404, description: '모임을 찾을 수 없음' })
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
+    const partyId = parseInt(id, 10);
+    if (isNaN(partyId)) {
+      throw new BadRequestException('Invalid party ID');
+    }
+    return this.partiesService.findOne(partyId, req?.user?.id);
   }
 
   @Get('user/:userId')
@@ -75,11 +95,33 @@ export class PartiesController {
     }),
   )
   create(
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
     @Body() createPartyDto: CreatePartyDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
     const hostId = req.user.id;
     return this.partiesService.createWithFile(createPartyDto, file, hostId);
+  }
+
+  @Post(':id/join')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({
+    summary: '모임 가입 신청',
+    description: '특정 모임에 가입을 신청합니다.',
+  })
+  @ApiParam({ name: 'id', example: 1, description: '모임 ID' })
+  @ApiResponse({ status: 200, description: '가입 신청 성공' })
+  @ApiResponse({ status: 401, description: '인증 실패' })
+  @ApiResponse({ status: 404, description: '모임을 찾을 수 없음' })
+  async joinParty(
+    @Param('id') partyId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const id = parseInt(partyId, 10);
+    if (isNaN(id)) {
+      throw new BadRequestException('Invalid party ID');
+    }
+    const userId = req.user.id;
+    return this.partiesService.joinParty(id, userId);
   }
 }

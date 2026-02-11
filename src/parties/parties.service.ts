@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
 import { Party } from './entities/party.entity';
+import { PartyMember } from '../party-members/entities/party-member.entity';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
 
@@ -10,6 +15,8 @@ export class PartiesService {
   constructor(
     @InjectRepository(Party)
     private partyRepository: Repository<Party>,
+    @InjectRepository(PartyMember)
+    private partyMemberRepository: Repository<PartyMember>,
   ) { }
 
   async createWithFile(
@@ -59,8 +66,9 @@ export class PartiesService {
       } as Partial<Party>);
 
       return this.partyRepository.save(party);
-    } catch (error: any) {
-      throw new BadRequestException(error.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadRequestException(message);
     }
   }
 
@@ -101,13 +109,54 @@ export class PartiesService {
     });
   }
 
-  findOne(id: number) {
-    return this.partyRepository.findOne({
-      where: { id },
-      relations: {
-        host: true,
-      }
+  async findOne(partyId: number, userId?: number) {
+    // 파티 정보 + 호스트 정보 가져오기
+    const party = await this.partyRepository.findOne({
+      where: { id: partyId },
+      relations: ['host'],
     });
+
+    if (!party) {
+      throw new NotFoundException(`Party with ID ${partyId} not found`);
+    }
+
+    let isJoined = false;
+    if (userId) {
+      // 내가 이 파티에 참여했나?
+      const memberRecord = await this.partyMemberRepository.findOne({
+        where: {
+          party: { id: partyId },
+          user: { id: userId },
+        },
+      });
+      isJoined = !!memberRecord;
+    }
+
+    return {
+      id: party.id,
+      title: party.title,
+      content: party.content,
+      meetingDate: party.meetDate,
+      status: party.status,
+      capacity: party.capacity,
+      currentCount: party.currentCount,
+      images: party.thumbnailImage ? [party.thumbnailImage] : [],
+      location: {
+        name: party.storeName || '장소 미정',
+        address: party.address || '',
+        addressKo: party.addressKo || '',
+        addressJp: party.addressJp || '',
+        lat: party.latitude ? Number(party.latitude) : 0,
+        lng: party.longitude ? Number(party.longitude) : 0,
+      },
+      host: {
+        id: party.host.id,
+        nickname: party.host.nickname,
+        avatarUrl: party.host.profileImage || null,
+      },
+      isJoined: isJoined,
+      isHost: userId ? party.host.id === userId : false,
+    };
   }
 
   update(id: number, updatePartyDto: UpdatePartyDto) {
@@ -128,5 +177,45 @@ export class PartiesService {
 
   remove(id: number) {
     return this.partyRepository.delete(id);
+  }
+
+  async joinParty(partyId: number, userId: number) {
+    const party = await this.partyRepository.findOne({
+      where: { id: partyId },
+    });
+
+    if (!party) {
+      throw new NotFoundException('해당 모임을 찾을 수 없습니다.');
+    }
+
+    if (party.status !== 'RECRUITING') {
+      throw new BadRequestException('현재 모집 중이 아닌 모임입니다.');
+    }
+
+    const existingMember = await this.partyMemberRepository.findOne({
+      where: {
+        party: { id: partyId },
+        user: { id: userId },
+      },
+    });
+
+    if (existingMember) {
+      throw new BadRequestException('이미 신청한 모임입니다.');
+    }
+
+    if (party.hostId === userId) {
+      throw new BadRequestException('본인이 생성한 모임입니다.');
+    }
+
+    const newMember = this.partyMemberRepository.create({
+      party: { id: partyId },
+      user: { id: userId },
+      status: 'PENDING',
+      joinedAt: new Date(),
+    });
+
+    await this.partyMemberRepository.save(newMember);
+
+    return { message: '가입 신청이 완료되었습니다!' };
   }
 }
