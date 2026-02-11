@@ -15,7 +15,7 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // 내 프로필 조회 (JWT 인증 필요, req.user에 자동으로 담김)
+  // 내 프로필 조회 (JWT 인증 필요, DB에서 직접 조회)
   @Get('profile')
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('access-token')
@@ -38,8 +38,8 @@ export class UsersController {
     },
   })
   @ApiResponse({ status: 401, description: '인증 실패 - 유효하지 않은 토큰' })
-  getProfile(@Request() req: { user: { id: number; email: string; nickname: string } }) {
-    return req.user;
+  async getProfile(@Request() req: { user: { id: number; email: string; nickname: string } }) {
+    return this.usersService.findOne(req.user.id);
   }
 
   // 특정 유저 조회 (로그인 불필요, 공개 정보만 반환)
