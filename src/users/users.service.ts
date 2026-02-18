@@ -235,4 +235,18 @@ export class UsersService {
     await this.usersRepository.update(id, updateData);
     return this.findOne(id);
   }
+
+  // 유저 위치 정보 업데이트
+  async updateLocation(userId: number, data: any) {
+    const updateFields: any = {};
+    
+    if (data.latitude) updateFields.latitude = data.latitude;
+    if (data.longitude) updateFields.longitude = data.longitude;
+    if (data.region) updateFields.region = data.region;     
+    if (data.district) updateFields.district = data.district;
+    await this.usersRepository.update(userId, updateFields);
+    
+    return { success: true };
+  }
+
 }
