@@ -9,7 +9,6 @@ import { UsersModule } from '../users/users.module';
 
 /**
  * Auth 모듈 - 인증 관련 기능들을 한데 모아놓음
- * 
  * NestJS는 모듈 단위로 기능을 관리함
  * 이 모듈은 로그인, 회원가입, 토큰 관리 등을 담당함
  */
@@ -32,8 +31,8 @@ import { UsersModule } from '../users/users.module';
       }),
     }),
   ],
-  controllers: [AuthController], // API 엔드포인트 담당
-  providers: [AuthService, JwtStrategy], // 비즈니스 로직 담당
-  exports: [AuthService], // 다른 모듈에서도 AuthService 쓸 수 있게 export
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy],
+  exports: [AuthService], 
 })
 export class AuthModule {}
