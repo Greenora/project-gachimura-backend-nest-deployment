@@ -53,12 +53,24 @@ export class User {
   @Column({ nullable: true }) // 소셜 로그인 고유 ID
   sns_id?: string;
 
-  @Column('decimal', { precision: 4, scale: 1, default: 36.5 }) // 매너 점수
-  manner_score: number;
+  @Column('decimal', { precision: 4, scale: 1, default: 36.5 }) // 신뢰 지수
+  treeScore: number;
 
   @CreateDateColumn({ name: 'created_at' }) // 가입일시 자동 저장
   createdAt: Date;
 
   @UpdateDateColumn({ name: 'updated_at' }) // 수정일시 자동 갱신
   updatedAt: Date;
+
+  @Column('decimal', { precision: 10, scale: 8, nullable: true })
+  latitude: number;
+
+  @Column('decimal', { precision: 11, scale: 8, nullable: true })
+  longitude: number;
+
+  @Column({ nullable: true })
+  region: string;
+
+  @Column({ nullable: true })
+  district: string;
 }

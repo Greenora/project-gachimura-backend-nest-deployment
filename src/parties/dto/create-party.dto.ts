@@ -1,10 +1,5 @@
+import { IsString, IsOptional, IsNotEmpty, IsNumberString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsNumberString,
-} from 'class-validator';
 
 export class CreatePartyDto {
   @ApiProperty({
@@ -34,7 +29,7 @@ export class CreatePartyDto {
   store_name?: string;
 
   @ApiProperty({
-    description: '상세 주소 (기본 한국어)',
+    description: '상세 주소 (기본)',
     example: '서울 성동구 뚝섬로 379',
     required: false,
   })

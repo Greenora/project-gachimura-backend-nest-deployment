@@ -33,7 +33,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) {}
+  ) { }
 
   // 랜덤 닉네임 생성 (한/일 동시)
   private generateRandomNicknamePair(): { ko: string; jp: string } {
@@ -228,5 +228,11 @@ export class UsersService {
   // Refresh Token 삭제 (로그아웃 시 호출)
   async removeRefreshToken(userId: number): Promise<void> {
     await this.usersRepository.update(userId, { refreshToken: null });
+  }
+
+  // 유저 정보 수정 
+  async update(id: number, updateData: Partial<User>): Promise<User | null> {
+    await this.usersRepository.update(id, updateData);
+    return this.findOne(id);
   }
 }

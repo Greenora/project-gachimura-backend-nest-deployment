@@ -34,6 +34,12 @@ export class Party {
   @Column({ nullable: true })
   address?: string;
 
+  @Column({ name: 'address_ko', nullable: true })
+  addressKo?: string;
+
+  @Column({ name: 'address_jp', nullable: true })
+  addressJp?: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true })
   latitude?: number;
 
