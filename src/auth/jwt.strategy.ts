@@ -4,8 +4,6 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 
 /**
- * JWT 인증 전략 클래스
- * 
  * 프론트에서 Bearer 토큰으로 API 요청할 때 이 클래스가 토큰을 검증함
  * @UseGuards(AuthGuard('jwt')) 데코레이터 쓰면 이 클래스가 작동함
  * 
