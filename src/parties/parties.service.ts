@@ -151,6 +151,7 @@ export class PartiesService {
         // 호스트 정보
         id: party.host.id,
         nickname: party.host.nickname,
+        nickname_jp: party.host.nickname_jp || party.host.nickname,
         avatarUrl: party.host.profileImage || null,
       },
       isJoined: isJoined,
