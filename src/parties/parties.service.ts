@@ -84,6 +84,7 @@ export class PartiesService {
     ] : {};
 
     // 2. 만료된 파티 안보기 필터링 (showCompleted === false 이면 모집중인것만)
+    // where가 배열(OR)인 경우 각 항목에 status 조건을 추가해야 함
     if (!showCompleted) {
       if (Array.isArray(where)) {
         where = where.map(w => ({ ...w, status: 'RECRUITING' }));
@@ -152,6 +153,7 @@ export class PartiesService {
       host: {
         id: party.host.id,
         nickname: party.host.nickname,
+        nickname_jp: party.host.nickname_jp || party.host.nickname,
         avatarUrl: party.host.profileImage || null,
       },
       isJoined: isJoined,

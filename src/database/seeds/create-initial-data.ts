@@ -6,6 +6,7 @@ import { Party } from '../../parties/entities/party.entity';
 import { PartyMember } from '../../party-members/entities/party-member.entity';
 import { ChatMessage } from '../../chat-message/entities/chat-message.entity';
 import { DataSource } from 'typeorm';
+import * as bcrypt from 'bcrypt';
 
 async function bootstrap() {
   const app = await NestFactory.createApplicationContext(AppModule);
@@ -23,10 +24,12 @@ async function bootstrap() {
 
   // 1. 유저 생성
   const userRepo = dataSource.getRepository(User);
+  const hashedPassword = await bcrypt.hash('password123', 10);
 
   const user1 = await userRepo.save({
     email: 'hong@test.com',
-    nickname: '홍길동',
+    password: hashedPassword,
+    nickname: '코끼리',
     provider: 'EMAIL',
     treeScore: 80,
     latitude: 35.85,
@@ -37,6 +40,7 @@ async function bootstrap() {
 
   const user2 = await userRepo.save({
     email: 'kim@test.com',
+    password: hashedPassword,
     nickname: '김철수',
     provider: 'EMAIL',
     treeScore: 65,
@@ -48,7 +52,8 @@ async function bootstrap() {
 
   const user3 = await userRepo.save({
     email: 'lee@test.com',
-    nickname: '이길동',
+    password: hashedPassword,
+    nickname: '기린',
     provider: 'EMAIL',
     treeScore: 50,
     latitude: 35.89,
@@ -57,7 +62,7 @@ async function bootstrap() {
     district: '북구'
   });
 
-  console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname);
+  console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname, user3.nickname);
 
   // 2. 모임 생성
   const partyRepo = dataSource.getRepository(Party);
@@ -104,7 +109,7 @@ async function bootstrap() {
       content: '계란 1+1 행사하는데 한 판씩 나누실 분 구합니다.',
       storeName: '이마트 만촌점',
       addressKo: '대구 수성구 동원로 136',
-      addressJp: 'テグ寿城区東園路136',
+      addressJp: 'テグ寿城区동園路136',
       latitude: 35.858,
       longitude: 128.643,
       meetDate: new Date('2026-03-15T18:30:00'),

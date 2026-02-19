@@ -33,7 +33,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) {}
+  ) { }
 
   // 랜덤 닉네임 생성 (한/일 동시)
   private generateRandomNicknamePair(): { ko: string; jp: string } {
@@ -229,4 +229,24 @@ export class UsersService {
   async removeRefreshToken(userId: number): Promise<void> {
     await this.usersRepository.update(userId, { refreshToken: null });
   }
+
+  // 유저 정보 수정 
+  async update(id: number, updateData: Partial<User>): Promise<User | null> {
+    await this.usersRepository.update(id, updateData);
+    return this.findOne(id);
+  }
+
+  // 유저 위치 정보 업데이트
+  async updateLocation(userId: number, data: any) {
+    const updateFields: any = {};
+    
+    if (data.latitude) updateFields.latitude = data.latitude;
+    if (data.longitude) updateFields.longitude = data.longitude;
+    if (data.region) updateFields.region = data.region;     
+    if (data.district) updateFields.district = data.district;
+    await this.usersRepository.update(userId, updateFields);
+    
+    return { success: true };
+  }
+
 }

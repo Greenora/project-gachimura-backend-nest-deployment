@@ -4,11 +4,12 @@ import {
   Post,
   Body,
   Param,
+  Delete,
+  Query,
   UploadedFile,
   UseInterceptors,
   UseGuards,
   Req,
-  Query,
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
