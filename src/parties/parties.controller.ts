@@ -98,7 +98,7 @@ export class PartiesController {
   create(
     @Req() req: AuthenticatedRequest,
     @Body() createPartyDto: CreatePartyDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: any,
   ) {
     const hostId = req.user.id;
     return this.partiesService.createWithFile(createPartyDto, file, hostId);
