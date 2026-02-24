@@ -65,7 +65,20 @@ export class PartiesService {
         status: 'RECRUITING',
       } as Partial<Party>);
 
-      return this.partyRepository.save(party);
+      const savedParty = await this.partyRepository.save(party);
+
+      // 호스트를 파티 멤버로 자동 등록 (승인 상태)
+      if (hostId) {
+        const hostMember = this.partyMemberRepository.create({
+          partyId: savedParty.id,
+          userId: hostId,
+          status: 'APPROVED',
+          joinedAt: new Date(),
+        });
+        await this.partyMemberRepository.save(hostMember);
+      }
+
+      return savedParty;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new BadRequestException(message);
@@ -179,6 +192,15 @@ export class PartiesService {
 
   remove(id: number) {
     return this.partyRepository.delete(id);
+  }
+
+  async findJoinedParties(userId: number) {
+    const memberships = await this.partyMemberRepository.find({
+      where: { userId, status: 'APPROVED' },
+      relations: ['party', 'party.host'],
+      order: { party: { meetDate: 'DESC' } },
+    });
+    return memberships.map((m) => m.party);
   }
 
   async joinParty(partyId: number, userId: number) {
