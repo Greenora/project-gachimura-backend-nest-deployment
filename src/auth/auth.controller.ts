@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Request, Res, Response } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -261,7 +261,11 @@ export class AuthController {
     schema: { example: { message: '로그아웃 되었습니다.' } },
   })
   @ApiResponse({ status: 401, description: '인증 실패' })
-  async logout(@Request() req: { user: { id: number } }) {
-    return await this.authService.logout(req.user.id);
+  async logout(@Request() req: { user: { id: number } }, @Res() res) {
+    await this.authService.logout(req.user.id);
+    // 쿠키 만료 헤더 내려주기
+    res.clearCookie('refreshToken', { path: '/', httpOnly: true, secure: true });
+    res.clearCookie('accessToken', { path: '/', httpOnly: true, secure: true });
+    return res.status(200).json({ message: '로그아웃 되었습니다.' });
   }
 }
