@@ -53,7 +53,7 @@ export class User {
   @Column({ nullable: true }) // 소셜 로그인 고유 ID
   sns_id?: string;
 
-  @Column('decimal', { precision: 4, scale: 1, default: 36.5 }) // 신뢰 지수
+  @Column('decimal', { precision: 4, scale: 1, default: 50.0 }) // 신뢰 지수
   treeScore: number;
 
   @CreateDateColumn({ name: 'created_at' }) // 가입일시 자동 저장

@@ -13,8 +13,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { PartiesService } from './parties.service';
-import { CreatePartyDto } from './dto/create-party.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -23,10 +21,11 @@ import {
   ApiResponse,
   ApiParam,
 } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { PartiesService } from './parties.service';
+import { CreatePartyDto } from './dto/create-party.dto';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
-import * as fs from 'fs';
+import { AuthGuard } from '@nestjs/passport';
 
 // JWT 인증된 요청 타입
 interface AuthenticatedRequest {
@@ -41,7 +40,7 @@ export class PartiesController {
 
   @Get()
   @ApiOperation({
-    summary: '전체 모임 목록 조회',
+    summary: '모든 모임 조회 (검색/정렬/필터)',
     description: '생성된 모든 모임 목록을 가져옵니다. 검색(?search=), 정렬(?sort=latest|imminent), 만료포함(?completed=true|false) 필터를 지원합니다.',
   })
   findAll(
@@ -60,35 +59,7 @@ export class PartiesController {
     description: 'ID를 기반으로 특정 모임의 상세 정보를 가져옵니다.',
   })
   @ApiParam({ name: 'id', example: 1, description: '모임 ID' })
-  @ApiResponse({
-    status: 200,
-    description: '모임 상세 조회 성공',
-    schema: {
-      example: {
-        id: 1,
-        title: '테스트 모임',
-        content: '모임 설명입니다',
-        meetingDate: '2026-02-12T07:14:00.000Z',
-        status: 'RECRUITING',
-        capacity: 4,
-        currentCount: 1,
-        images: ['image.jpg'],
-        location: {
-          name: '이마트 칠성점',
-          address: '대구광역시 북구 침산로 93',
-          lat: 35.8849145,
-          lng: 128.5900899,
-        },
-        host: {
-          id: 1,
-          nickname: '근사한 백조',
-          avatarUrl: null,
-        },
-        isJoined: false,
-        isHost: true,
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: '모임 상세 조회 성공' })
   @ApiResponse({ status: 401, description: '인증 실패' })
   @ApiResponse({ status: 404, description: '모임을 찾을 수 없음' })
   findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
@@ -96,42 +67,41 @@ export class PartiesController {
     if (isNaN(partyId)) {
       throw new BadRequestException('Invalid party ID');
     }
-    return this.partiesService.findOne(partyId, req.user.id);
+    return this.partiesService.findOne(partyId, req?.user?.id);
+  }
+
+  @Get('user/:userId')
+  @ApiOperation({ summary: '특정 유저가 만든 모임 목록 조회' })
+  findAllByUser(@Param('userId') userId: string) {
+    return this.partiesService.findAllByUser(+userId);
   }
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({
-    summary: '모임 생성',
-    description: '새로운 모임을 생성합니다.',
-  })
   @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: '새 모임 생성',
+    description: '새로운 장보기 모임을 생성합니다.',
+  })
   @UseInterceptors(
     FileInterceptor('thumbnail_image', {
       storage: diskStorage({
-        destination: (req, file, callback) => {
-          const uploadPath = './uploads';
-          if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath);
-          }
-          callback(null, uploadPath);
-        },
+        destination: './uploads',
         filename: (req, file, callback) => {
           const uniqueSuffix =
             Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          callback(null, `${uniqueSuffix}${ext}`);
+          callback(null, `${uniqueSuffix}${extname(file.originalname)}`);
         },
       }),
     }),
   )
   create(
-    @Body() dto: CreatePartyDto,
-    @UploadedFile() file: Express.Multer.File | undefined,
     @Req() req: AuthenticatedRequest,
+    @Body() createPartyDto: CreatePartyDto,
+    @UploadedFile() file: any,
   ) {
     const hostId = req.user.id;
-    return this.partiesService.createWithFile(dto, file, hostId);
+    return this.partiesService.createWithFile(createPartyDto, file, hostId);
   }
 
   @Post(':id/join')
@@ -141,24 +111,7 @@ export class PartiesController {
     description: '특정 모임에 가입을 신청합니다.',
   })
   @ApiParam({ name: 'id', example: 1, description: '모임 ID' })
-  @ApiResponse({
-    status: 200,
-    description: '가입 신청 성공',
-    schema: {
-      example: { message: '가입 신청이 완료되었습니다!' },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: '가입 실패',
-    schema: {
-      example: {
-        message: '본인이 생성한 모임입니다.',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    },
-  })
+  @ApiResponse({ status: 200, description: '가입 신청 성공' })
   @ApiResponse({ status: 401, description: '인증 실패' })
   @ApiResponse({ status: 404, description: '모임을 찾을 수 없음' })
   async joinParty(

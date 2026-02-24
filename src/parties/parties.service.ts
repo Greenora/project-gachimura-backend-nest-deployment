@@ -17,11 +17,11 @@ export class PartiesService {
     private partyRepository: Repository<Party>,
     @InjectRepository(PartyMember)
     private partyMemberRepository: Repository<PartyMember>,
-  ) {}
+  ) { }
 
   async createWithFile(
     dto: CreatePartyDto,
-    file?: Express.Multer.File,
+    file?: any,
     hostId?: number,
   ) {
     console.log('DTO RAW:', dto);
@@ -110,26 +110,28 @@ export class PartiesService {
     });
   }
 
-  async findOne(partyId: number, userId: number) {
+  async findOne(partyId: number, userId?: number) {
     // 파티 정보 + 호스트 정보 가져오기
     const party = await this.partyRepository.findOne({
       where: { id: partyId },
-      relations: ['host'], // 호스트 닉네임, 프사 정보 포함
+      relations: ['host'],
     });
 
     if (!party) {
       throw new NotFoundException(`Party with ID ${partyId} not found`);
     }
 
-    // 내가 이 파티에 참여했나?
-    const memberRecord = await this.partyMemberRepository.findOne({
-      where: {
-        party: { id: partyId },
-        user: { id: userId },
-      },
-    });
-
-    const isJoined = !!memberRecord; // 참여 여부
+    let isJoined = false;
+    if (userId) {
+      // 내가 이 파티에 참여했나?
+      const memberRecord = await this.partyMemberRepository.findOne({
+        where: {
+          party: { id: partyId },
+          user: { id: userId },
+        },
+      });
+      isJoined = !!memberRecord;
+    }
 
     return {
       id: party.id,
@@ -141,21 +143,21 @@ export class PartiesService {
       currentCount: party.currentCount,
       images: party.thumbnailImage ? [party.thumbnailImage] : [],
       location: {
-        // 지도용 좌표 정보 (구글맵)
         name: party.storeName || '장소 미정',
         address: party.address || '',
+        addressKo: party.addressKo || '',
+        addressJp: party.addressJp || '',
         lat: party.latitude ? Number(party.latitude) : 0,
         lng: party.longitude ? Number(party.longitude) : 0,
       },
       host: {
-        // 호스트 정보
         id: party.host.id,
         nickname: party.host.nickname,
         nickname_jp: party.host.nickname_jp || party.host.nickname,
         avatarUrl: party.host.profileImage || null,
       },
       isJoined: isJoined,
-      isHost: party.host.id === userId,
+      isHost: userId ? party.host.id === userId : false,
     };
   }
 
@@ -163,14 +165,23 @@ export class PartiesService {
     return this.partyRepository.update(id, updatePartyDto);
   }
 
+  findAllByUser(userId: number) {
+    return this.partyRepository.find({
+      where: { hostId: userId },
+      relations: {
+        host: true,
+      },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
   remove(id: number) {
     return this.partyRepository.delete(id);
   }
 
-  // ...existing code... (마지막에 추가)
-
   async joinParty(partyId: number, userId: number) {
-    // 1. 파티가 존재하는지 확인
     const party = await this.partyRepository.findOne({
       where: { id: partyId },
     });
@@ -183,7 +194,6 @@ export class PartiesService {
       throw new BadRequestException('현재 모집 중이 아닌 모임입니다.');
     }
 
-    // 2. 이미 가입한 멤버인지 확인
     const existingMember = await this.partyMemberRepository.findOne({
       where: {
         party: { id: partyId },
@@ -195,16 +205,14 @@ export class PartiesService {
       throw new BadRequestException('이미 신청한 모임입니다.');
     }
 
-    // 3. 호스트인지 확인 (호스트는 자동으로 승인된 멤버)
     if (party.hostId === userId) {
       throw new BadRequestException('본인이 생성한 모임입니다.');
     }
 
-    // 4. 새 멤버 추가
     const newMember = this.partyMemberRepository.create({
       party: { id: partyId },
       user: { id: userId },
-      status: 'PENDING', // 대기 상태로 시작
+      status: 'PENDING',
       joinedAt: new Date(),
     });
 

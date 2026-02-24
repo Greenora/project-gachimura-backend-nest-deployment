@@ -11,6 +11,8 @@ import { ChatMessage } from './chat-message/entities/chat-message.entity';
 import { PartyMembersModule } from './party-members/party-members.module';
 import { PartyMember } from './party-members/entities/party-member.entity';
 import { ChatModule } from './chat/chat.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { Review } from './reviews/entities/review.entity';
 
 @Module({
   imports: [
@@ -31,7 +33,7 @@ import { ChatModule } from './chat/chat.module';
         username: configService.get<string>('DB_USERNAME'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
-        entities: [User, Party, ChatMessage, PartyMember],
+        entities: [User, Party, ChatMessage, PartyMember, Review],
         synchronize: true,
         charset: 'utf8mb4',
       }),
@@ -42,8 +44,9 @@ import { ChatModule } from './chat/chat.module';
     ChatMessageModule, // 팀원 (채팅메시지)
     PartyMembersModule, // 팀원 (파티멤버)
     ChatModule, // 팀원 (채팅)
+    ReviewsModule, // 추가 (후기)
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule { }
