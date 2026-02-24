@@ -62,7 +62,19 @@ async function bootstrap() {
     district: '북구'
   });
 
-  console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname, user3.nickname);
+  const user4 = await userRepo.save({
+    email: 'soil@test.com',
+    password: hashedPassword,
+    nickname: '흙투성이',
+    provider: 'EMAIL',
+    treeScore: 18,
+    latitude: 37.54,
+    longitude: 127.05,
+    region: '서울특별시',
+    district: '성동구'
+  });
+
+  console.log('✅ 유저 생성 완료:', user1.nickname, user2.nickname, user3.nickname, user4.nickname);
 
   // 2. 모임 생성
   const partyRepo = dataSource.getRepository(Party);
