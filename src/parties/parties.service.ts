@@ -17,16 +17,13 @@ export class PartiesService {
     private partyRepository: Repository<Party>,
     @InjectRepository(PartyMember)
     private partyMemberRepository: Repository<PartyMember>,
-  ) { }
+  ) {}
 
-  async createWithFile(
-    dto: CreatePartyDto,
-    file?: any,
-    hostId?: number,
-  ) {
+
+  // 모임 생성 (파일 업로드 포함)
+  async createWithFile(dto: CreatePartyDto, file?: any, hostId?: number) {
     console.log('DTO RAW:', dto);
-
-    try {
+    try { 
       const {
         title,
         content,
@@ -41,11 +38,10 @@ export class PartiesService {
       } = dto;
 
       if (!meetingDate || !meetingTime) {
-        throw new Error('meetingDate and meetingTime are required');
+        throw new Error('meetingDate와 meetingTime은 필수입니다');
       }
-
       if (!title) {
-        throw new Error('title is required');
+        throw new Error('title은 필수입니다');
       }
 
       const meetDate = new Date(`${meetingDate}T${meetingTime}:00`);
@@ -60,7 +56,8 @@ export class PartiesService {
         latitude: latitude ? Number(latitude) : null,
         longitude: longitude ? Number(longitude) : null,
         meetDate,
-        thumbnailImage: file?.filename ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+        thumbnailImage: file && typeof file.filename === 'string' ? file.filename : null,
         hostId: hostId,
         status: 'RECRUITING',
       } as Partial<Party>);
@@ -85,33 +82,41 @@ export class PartiesService {
     }
   }
 
-  findAll(search?: string, sort: string = 'latest', showCompleted: boolean = true) {
-    // 1. 기본 검색 조건 (OR 조건)
-    let where: any = search ? [
-      { title: ILike(`%${search}%`) },
-      { content: ILike(`%${search}%`) },
-      { storeName: ILike(`%${search}%`) },
-      { addressKo: ILike(`%${search}%`) },
-      { addressJp: ILike(`%${search}%`) },
-      { host: { nickname: ILike(`%${search}%`) } },
-    ] : {};
 
-    // 2. 만료된 파티 안보기 필터링 (showCompleted === false 이면 모집중인것만)
-    // where가 배열(OR)인 경우 각 항목에 status 조건을 추가해야 함
+  // 모임 목록 조회 (검색/정렬/모집중 필터)
+  findAll(
+    search?: string,
+    sort: string = 'latest',
+    showCompleted: boolean = true,
+  ) {
+    // 검색 조건(OR)
+    let where = search
+      ? [
+          { title: ILike(`%${search}%`) },
+          { content: ILike(`%${search}%`) },
+          { storeName: ILike(`%${search}%`) },
+          { addressKo: ILike(`%${search}%`) },
+          { addressJp: ILike(`%${search}%`) },
+          { host: { nickname: ILike(`%${search}%`) } },
+        ]
+      : {};
+
+    // 모집중 필터
     if (!showCompleted) {
       if (Array.isArray(where)) {
-        where = where.map(w => ({ ...w, status: 'RECRUITING' }));
-      } else {
-        where.status = 'RECRUITING';
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+        where = where.map((w) => ({ ...w, status: 'RECRUITING' }));
+      } else if (typeof where === 'object' && where !== null) {
+        (where as Record<string, any>).status = 'RECRUITING';
       }
     }
 
-    // 3. 정렬 조건식
-    const order: any = {};
+    // 정렬 조건
+    const order: Record<string, 'ASC' | 'DESC'> = {};
     if (sort === 'imminent') {
-      order.meetDate = 'ASC'; // 가까운 일시순
+      order['meetDate'] = 'ASC'; // 가까운 일시순
     } else {
-      order.createdAt = 'DESC'; // 최신 등록순
+      order['createdAt'] = 'DESC'; // 최신 등록순
     }
 
     return this.partyRepository.find({
@@ -123,8 +128,10 @@ export class PartiesService {
     });
   }
 
+
+  // 모임 상세 조회 (유저별 상태 포함)
   async findOne(partyId: number, userId?: number) {
-    // 파티 정보 + 호스트 정보 가져오기
+    // 파티 정보 + 호스트 정보 조회
     const party = await this.partyRepository.findOne({
       where: { id: partyId },
       relations: ['host'],
@@ -134,16 +141,28 @@ export class PartiesService {
       throw new NotFoundException(`Party with ID ${partyId} not found`);
     }
 
+    // 유저별 상태값 계산
     let isJoined = false;
+    let isAccepted = false;
+    let isRejected = false;
+    let isHost = false;
+    let memberStatus: string | null = null;
+
     if (userId) {
-      // 내가 이 파티에 참여했나?
+      // 내가 이 파티에 참여했는지 확인
       const memberRecord = await this.partyMemberRepository.findOne({
         where: {
           party: { id: partyId },
           user: { id: userId },
         },
       });
-      isJoined = !!memberRecord;
+      if (memberRecord) {
+        isJoined = true;
+        memberStatus = memberRecord.status;
+        isAccepted = memberRecord.status === 'APPROVED';
+        isRejected = memberRecord.status === 'REJECTED';
+      }
+      isHost = party.host.id === userId;
     }
 
     return {
@@ -169,8 +188,11 @@ export class PartiesService {
         nickname_jp: party.host.nickname_jp || party.host.nickname,
         avatarUrl: party.host.profileImage || null,
       },
-      isJoined: isJoined,
-      isHost: userId ? party.host.id === userId : false,
+      isJoined,
+      isAccepted,
+      isRejected,
+      isHost,
+      memberStatus,
     };
   }
 
