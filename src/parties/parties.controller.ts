@@ -51,6 +51,12 @@ export class PartiesController {
     const showCompleted = completed !== 'false'; // 기본값은 true (보여줌)
     return this.partiesService.findAll(search, sort, showCompleted);
   }
+  @Get('joined-parties')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: '내가 참여 중인(승인된) 모든 모임 목록 조회' })
+  getJoinedParties(@Req() req: AuthenticatedRequest) {
+    return this.partiesService.findJoinedParties(req.user.id);
+  }
 
   @Get(':id')
   @UseGuards(AuthGuard('jwt'))
@@ -75,6 +81,7 @@ export class PartiesController {
   findAllByUser(@Param('userId') userId: string) {
     return this.partiesService.findAllByUser(+userId);
   }
+
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
