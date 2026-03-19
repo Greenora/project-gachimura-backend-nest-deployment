@@ -26,7 +26,7 @@ import { UsersModule } from '../users/users.module';
         secret: configService.get<string>('JWT_SECRET'),
         // 토큰 옵션 설정
         signOptions: { 
-          expiresIn: '1h' // Access Token은 1시간만 유효 (보안상 짧게)
+          expiresIn: '10s' // Access Token은 1시간만 유효 (보안상 짧게)
         },
       }),
     }),
