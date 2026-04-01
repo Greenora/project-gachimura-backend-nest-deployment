@@ -13,6 +13,11 @@ import { PartyMember } from './party-members/entities/party-member.entity';
 import { ChatModule } from './chat/chat.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { Review } from './reviews/entities/review.entity';
+import { SettlementsModule } from './settlements/settlements.module';
+import { Settlement } from './settlements/entities/settlement.entity';
+import { SettlementItem } from './settlements/entities/settlement-item.entity';
+import { SettlementItemMember } from './settlements/entities/settlement-item-member.entity';
+import { SettlementPayment } from './settlements/entities/settlement-payment.entity';
 
 @Module({
   imports: [
@@ -33,7 +38,7 @@ import { Review } from './reviews/entities/review.entity';
         username: configService.get<string>('DB_USERNAME'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
-        entities: [User, Party, ChatMessage, PartyMember, Review],
+        entities: [User, Party, ChatMessage, PartyMember, Review, Settlement, SettlementItem, SettlementItemMember, SettlementPayment],
         synchronize: true,
         charset: 'utf8mb4',
       }),
@@ -45,6 +50,7 @@ import { Review } from './reviews/entities/review.entity';
     PartyMembersModule, // 팀원 (파티멤버)
     ChatModule, // 팀원 (채팅)
     ReviewsModule, // 추가 (후기)
+    SettlementsModule, // 정산
   ],
   controllers: [],
   providers: [],
