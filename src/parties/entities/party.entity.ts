@@ -55,7 +55,7 @@ export class Party {
   @Column({ default: 1, name: 'current_count' }) // 현재 참여 인원 수 (기본값 1, 호스트 포함)
   currentCount: number;
 
-  @Column({ default: 'RECRUITING' }) // RECRUITING | SEALED | CLOSED
+  @Column({ default: 'RECRUITING' }) // RECRUITING | SEALED | SETTLING | CLOSED
   status: string;
 
   @CreateDateColumn({ name: 'created_at' })

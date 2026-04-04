@@ -53,6 +53,8 @@ export class UsersController {
       nickname_jp: user.nickname_jp,
       profileImage: user.profileImage,
       provider: user.provider,
+      treeScore: user.treeScore,
+      reviewsCount: user.reviewsCount,
     };
   }
 

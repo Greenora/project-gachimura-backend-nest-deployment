@@ -23,4 +23,13 @@ export class ReviewsController {
   findAllByUser(@Param('userId') userId: string) {
     return this.reviewsService.findAllByUser(+userId);
   }
+
+  @Get('check/:partyId')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: '특정 모임에 대한 평가 완료 여부 확인' })
+  checkReviewStatus(@Req() req, @Param('partyId') partyId: string) {
+    const reviewerId = req.user.id;
+    return this.reviewsService.checkReviewStatus(+partyId, reviewerId);
+  }
 }
