@@ -10,6 +10,7 @@ import {
   UseInterceptors,
   UseGuards,
   Req,
+  Patch,
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -131,5 +132,20 @@ export class PartiesController {
     }
     const userId = req.user.id;
     return this.partiesService.joinParty(id, userId);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiOperation({ summary: '모임 상태 변경 (방장 전용)' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+    @Body('status') status: string,
+  ) {
+    const partyId = parseInt(id, 10);
+    if (isNaN(partyId)) {
+      throw new BadRequestException('Invalid party ID');
+    }
+    return this.partiesService.updateStatus(partyId, status, req.user.id);
   }
 }

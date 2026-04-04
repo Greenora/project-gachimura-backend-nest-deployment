@@ -92,13 +92,13 @@ export class PartiesService {
     // 검색 조건(OR)
     let where = search
       ? [
-          { title: ILike(`%${search}%`) },
-          { content: ILike(`%${search}%`) },
-          { storeName: ILike(`%${search}%`) },
-          { addressKo: ILike(`%${search}%`) },
-          { addressJp: ILike(`%${search}%`) },
-          { host: { nickname: ILike(`%${search}%`) } },
-        ]
+        { title: ILike(`%${search}%`) },
+        { content: ILike(`%${search}%`) },
+        { storeName: ILike(`%${search}%`) },
+        { addressKo: ILike(`%${search}%`) },
+        { addressJp: ILike(`%${search}%`) },
+        { host: { nickname: ILike(`%${search}%`) } },
+      ]
       : {};
 
     // 모집중 필터
@@ -263,5 +263,21 @@ export class PartiesService {
     await this.partyMemberRepository.save(newMember);
 
     return { message: '가입 신청이 완료되었습니다!' };
+  }
+  async updateStatus(partyId: number, status: string, userId: number) {
+    const party = await this.partyRepository.findOne({
+      where: { id: partyId },
+    });
+
+    if (!party) {
+      throw new NotFoundException('해당 모임을 찾을 수 없습니다.');
+    }
+
+    if (party.hostId !== userId) {
+      throw new BadRequestException('모임 상태를 변경할 권한이 없습니다.');
+    }
+
+    party.status = status;
+    return this.partyRepository.save(party);
   }
 }

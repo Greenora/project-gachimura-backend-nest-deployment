@@ -56,6 +56,9 @@ export class User {
   @Column('decimal', { precision: 4, scale: 1, default: 50.0 }) // 신뢰 지수
   treeScore: number;
 
+  @Column({ name: 'reviews_count', default: 0 }) // 받은 평가 수
+  reviewsCount: number;
+
   @CreateDateColumn({ name: 'created_at' }) // 가입일시 자동 저장
   createdAt: Date;
 
