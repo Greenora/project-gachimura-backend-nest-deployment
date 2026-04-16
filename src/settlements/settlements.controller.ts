@@ -78,8 +78,13 @@ export class SettlementsController {
   startSelecting(
     @Param('id') id: string,
     @Req() req: AuthenticatedRequest,
+    @Body() body: { resumedFromEdit?: boolean },
   ) {
-    return this.settlementsService.startSelecting(+id, req.user.id);
+    return this.settlementsService.startSelecting(
+      +id,
+      req.user.id,
+      body?.resumedFromEdit === true,
+    );
   }
 
   @Patch(':id/select')

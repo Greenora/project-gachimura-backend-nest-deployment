@@ -156,7 +156,11 @@ export class SettlementsService {
   }
 
   // 정산 시작하기 (DRAFT → SELECTING, 멤버들에게 알림)
-  async startSelecting(settlementId: number, hostId: number) {
+  async startSelecting(
+    settlementId: number,
+    hostId: number,
+    resumedFromEdit = false,
+  ) {
     const settlement = await this.settlementRepository.findOne({
       where: { id: settlementId },
       relations: ['items'],
@@ -167,22 +171,29 @@ export class SettlementsService {
     if (settlement.hostId !== hostId) {
       throw new ForbiddenException('호스트만 정산을 시작할 수 있습니다.');
     }
-    if (settlement.status !== 'DRAFT') {
+    if (settlement.status !== 'DRAFT' && settlement.status !== 'SELECTING') {
       throw new BadRequestException('이미 시작된 정산입니다.');
     }
     if (!settlement.items || settlement.items.length === 0) {
       throw new BadRequestException('품목을 먼저 등록해주세요.');
     }
 
-    settlement.status = 'SELECTING';
-    await this.settlementRepository.save(settlement);
-
-    await this.chatGateway.sendSystemMessage(
-      settlement.partyId,
-      '📋 정산이 시작되었습니다! 정산 페이지에서 본인이 구매한 품목을 선택해주세요.',
+    const updateResult = await this.settlementRepository.update(
+      { id: settlementId, status: 'DRAFT' },
+      { status: 'SELECTING' },
     );
 
-    return settlement;
+    // 상태가 실제로 전환된 경우에만 시스템 메시지 1회 전송
+    if (updateResult.affected && updateResult.affected > 0) {
+      await this.chatGateway.sendSystemMessage(
+        settlement.partyId,
+        resumedFromEdit
+          ? '__SYS__|SETTLEMENT_RESUMED'
+          : '__SYS__|SETTLEMENT_START',
+      );
+    }
+
+    return this.findOne(settlementId);
   }
 
   // 호스트: SELECTING → DRAFT 되돌리기 (품목 수정 가능)
@@ -197,32 +208,32 @@ export class SettlementsService {
     if (settlement.hostId !== hostId) {
       throw new ForbiddenException('호스트만 수정할 수 있습니다.');
     }
-    if (settlement.status !== 'SELECTING') {
+    if (settlement.status !== 'SELECTING' && settlement.status !== 'DRAFT') {
       throw new BadRequestException('수정 가능한 상태가 아닙니다.');
     }
 
-    // 멤버 선택 내역 삭제
-    for (const item of settlement.items) {
-      await this.itemMemberRepository.delete({ itemId: item.id });
-    }
-
-    settlement.status = 'DRAFT';
-    await this.settlementRepository.save(settlement);
-
-    await this.chatGateway.sendSystemMessage(
-      settlement.partyId,
-      '✏️ 호스트가 품목을 수정 중입니다. 잠시만 기다려주세요.',
+    const updateResult = await this.settlementRepository.update(
+      { id: settlementId, status: 'SELECTING' },
+      { status: 'DRAFT' },
     );
+
+    if (updateResult.affected && updateResult.affected > 0) {
+      // 상태가 실제로 바뀐 경우에만 선택 내역 삭제 및 메시지 전송
+      for (const item of settlement.items) {
+        await this.itemMemberRepository.delete({ itemId: item.id });
+      }
+
+      await this.chatGateway.sendSystemMessage(
+        settlement.partyId,
+        '__SYS__|SETTLEMENT_EDITING',
+      );
+    }
 
     return this.findOne(settlementId);
   }
 
   // 게스트: 본인 참여 항목 선택
-  async selectItems(
-    settlementId: number,
-    userId: number,
-    dto: SelectItemsDto,
-  ) {
+  async selectItems(settlementId: number, userId: number, dto: SelectItemsDto) {
     const settlement = await this.settlementRepository.findOne({
       where: { id: settlementId },
     });
@@ -293,12 +304,7 @@ export class SettlementsService {
   async confirm(settlementId: number, hostId: number) {
     const settlement = await this.settlementRepository.findOne({
       where: { id: settlementId },
-      relations: [
-        'items',
-        'items.members',
-        'items.members.user',
-        'party',
-      ],
+      relations: ['items', 'items.members', 'items.members.user', 'party'],
     });
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
@@ -311,8 +317,7 @@ export class SettlementsService {
     }
 
     // 멤버별 금액 계산
-    const memberAmounts: Record<number, { amount: number; nickname: string }> =
-      {};
+    const memberAmounts: Record<number, number> = {};
 
     for (const item of settlement.items) {
       if (!item.members || item.members.length === 0) continue;
@@ -320,13 +325,8 @@ export class SettlementsService {
         (item.price * item.quantity) / item.members.length,
       );
       for (const member of item.members) {
-        if (!memberAmounts[member.userId]) {
-          memberAmounts[member.userId] = {
-            amount: 0,
-            nickname: member.user?.nickname || '알 수 없음',
-          };
-        }
-        memberAmounts[member.userId].amount += perPerson;
+        memberAmounts[member.userId] =
+          (memberAmounts[member.userId] || 0) + perPerson;
       }
     }
 
@@ -344,7 +344,7 @@ export class SettlementsService {
         const payment = this.paymentRepository.create({
           settlementId,
           userId: uid,
-          amount: info.amount,
+          amount: info,
           status: 'PENDING',
         });
         await queryRunner.manager.save(payment);
@@ -357,15 +357,15 @@ export class SettlementsService {
 
       await queryRunner.commitTransaction();
 
-      // 채팅방에 정산 메시지 전송
-      let message = `💰 정산이 확정되었습니다!\n총 금액: ${settlement.totalAmount.toLocaleString()}원\n\n`;
-      for (const [userIdStr, info] of Object.entries(memberAmounts)) {
-        if (Number(userIdStr) === hostId) continue;
-        message += `• ${info.nickname}: ${info.amount.toLocaleString()}원\n`;
-      }
+      // 채팅방에 언어 중립 토큰 메시지 전송
+      const detailParts = Object.entries(memberAmounts)
+        .filter(([userIdStr]) => Number(userIdStr) !== hostId)
+        .map(([userIdStr, amount]) => `${userIdStr}:${amount}`)
+        .join(',');
+
       await this.chatGateway.sendSystemMessage(
         settlement.partyId,
-        message.trim(),
+        `__SYS__|SETTLEMENT_CONFIRMED|${settlement.totalAmount}|${detailParts}`,
       );
 
       return this.findOne(settlementId);
