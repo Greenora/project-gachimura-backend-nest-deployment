@@ -25,6 +25,7 @@ export class PartyMembersService {
         user: {
           id: true,
           nickname: true,
+          nickname_jp: true,
           profileImage: true,
         },
       },
@@ -68,10 +69,11 @@ export class PartyMembersService {
 
     // 승인되었을 때 시스템 메시지 전송
     if (status === 'APPROVED') {
-      const nickname = member.user?.nickname || '알 수 없음';
+      const nicknameKo = member.user?.nickname || '알 수 없음';
+      const nicknameJp = member.user?.nickname_jp || nicknameKo;
       this.chatGateway.sendSystemMessage(
         partyId,
-        `${nickname}님이 모임에 합류했습니다!`,
+        `__SYS__|JOIN|${encodeURIComponent(nicknameKo)}|${encodeURIComponent(nicknameJp)}`,
       );
     }
 
@@ -86,10 +88,11 @@ export class PartyMembersService {
     });
 
     if (member) {
-      const nickname = member.user?.nickname || '알 수 없음';
+      const nicknameKo = member.user?.nickname || '알 수 없음';
+      const nicknameJp = member.user?.nickname_jp || nicknameKo;
       this.chatGateway.sendSystemMessage(
         partyId,
-        `${nickname}님이 모임를 떠났습니다.`,
+        `__SYS__|LEAVE|${encodeURIComponent(nicknameKo)}|${encodeURIComponent(nicknameJp)}`,
       );
     }
 

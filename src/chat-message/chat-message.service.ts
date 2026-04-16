@@ -24,6 +24,7 @@ export class ChatMessageService {
         sender: {
           id: true,
           nickname: true,
+          nickname_jp: true,
           profileImage: true,
         },
       },
