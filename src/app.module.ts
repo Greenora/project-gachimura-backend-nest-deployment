@@ -18,6 +18,10 @@ import { Settlement } from './settlements/entities/settlement.entity';
 import { SettlementItem } from './settlements/entities/settlement-item.entity';
 import { SettlementItemMember } from './settlements/entities/settlement-item-member.entity';
 import { SettlementPayment } from './settlements/entities/settlement-payment.entity';
+import { CommunityModule } from './community/community.module';
+import { CommunityPost } from './community/entities/community-post.entity';
+import { CommunityPostLike } from './community/entities/community-post-like.entity';
+import { CommunityComment } from './community/entities/community-comment.entity';
 
 @Module({
   imports: [
@@ -38,7 +42,20 @@ import { SettlementPayment } from './settlements/entities/settlement-payment.ent
         username: configService.get<string>('DB_USERNAME'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
-        entities: [User, Party, ChatMessage, PartyMember, Review, Settlement, SettlementItem, SettlementItemMember, SettlementPayment],
+        entities: [
+          User,
+          Party,
+          ChatMessage,
+          PartyMember,
+          Review,
+          Settlement,
+          SettlementItem,
+          SettlementItemMember,
+          SettlementPayment,
+          CommunityPost,
+          CommunityPostLike,
+          CommunityComment,
+        ],
         synchronize: true,
         charset: 'utf8mb4',
       }),
@@ -51,8 +68,9 @@ import { SettlementPayment } from './settlements/entities/settlement-payment.ent
     ChatModule, // 팀원 (채팅)
     ReviewsModule, // 추가 (후기)
     SettlementsModule, // 정산
+    CommunityModule, // 커뮤니티
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}
