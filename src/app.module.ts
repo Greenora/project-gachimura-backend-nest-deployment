@@ -18,6 +18,7 @@ import { Settlement } from './settlements/entities/settlement.entity';
 import { SettlementItem } from './settlements/entities/settlement-item.entity';
 import { SettlementItemMember } from './settlements/entities/settlement-item-member.entity';
 import { SettlementPayment } from './settlements/entities/settlement-payment.entity';
+import { EmailVerification } from './auth/entities/email-verification.entity';
 
 @Module({
   imports: [
@@ -38,7 +39,18 @@ import { SettlementPayment } from './settlements/entities/settlement-payment.ent
         username: configService.get<string>('DB_USERNAME'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
-        entities: [User, Party, ChatMessage, PartyMember, Review, Settlement, SettlementItem, SettlementItemMember, SettlementPayment],
+        entities: [
+          User,
+          Party,
+          ChatMessage,
+          PartyMember,
+          Review,
+          Settlement,
+          SettlementItem,
+          SettlementItemMember,
+          SettlementPayment,
+          EmailVerification,
+        ],
         synchronize: true,
         charset: 'utf8mb4',
       }),
@@ -55,4 +67,4 @@ import { SettlementPayment } from './settlements/entities/settlement-payment.ent
   controllers: [],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}

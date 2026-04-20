@@ -2,10 +2,12 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { EmailVerification } from './entities/email-verification.entity';
 
 /**
  * Auth 모듈 - 인증 관련 기능들을 한데 모아놓음
@@ -16,6 +18,7 @@ import { UsersModule } from '../users/users.module';
   imports: [
     UsersModule, // 유저 정보 가져올 때 필요해서 import
     PassportModule, // JWT 인증 라이브러리
+    TypeOrmModule.forFeature([EmailVerification]),
     
     // JWT 모듈 설정 - 토큰 만들고 검증하는 기능
     JwtModule.registerAsync({
