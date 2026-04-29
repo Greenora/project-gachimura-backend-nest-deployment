@@ -24,26 +24,38 @@ async function bootstrap() {
 
   // Swagger 설정
   const config = new DocumentBuilder()
-    .setTitle('Gachimura API docs')
+    .setTitle('Gachimura Backend API')
     .setDescription(
-      '가치무라 프로젝트를 위한 채팅 및 모임 관리 API 문서입니다.',
+      [
+        '가치무라 백엔드 API 문서입니다.',
+        '',
+        '사용 가이드',
+        '1) 우측 상단 Authorize 버튼 클릭',
+        '2) accessToken 값을 Bearer 없이 입력',
+        '3) 자물쇠 표시가 있는 엔드포인트 호출',
+      ].join('\n'),
     )
     .setVersion('1.0')
+    .addServer('http://localhost:8000', 'Local')
+    .addServer('http://backend:3000', 'Docker network')
     .addBearerAuth(
       {
         type: 'http',
         scheme: 'bearer',
         bearerFormat: 'JWT',
         name: 'Authorization',
-        description: 'JWT 토큰을 입력하세요',
+        description: 'JWT Access Token을 입력하세요 (Bearer 접두어 자동 처리).',
         in: 'header',
       },
       'access-token', // 이 이름으로 @ApiBearerAuth('access-token') 사용
     )
     .addTag('Auth', '인증 관련 API (로그인, 회원가입)')
-    .addTag('Users', '유저 관련 API')
+    .addTag('Users', '유저 프로필/정보 API')
     .addTag('Parties', '모임 관련 API')
-    .addTag('Chat', '채팅 관련 API')
+    .addTag('Chat', '채팅 메시지 API')
+    .addTag('Settlements', '정산 관련 API')
+    .addTag('Community', '커뮤니티 피드/좋아요/댓글 API')
+    .addTag('Reviews', '후기/평가 API')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

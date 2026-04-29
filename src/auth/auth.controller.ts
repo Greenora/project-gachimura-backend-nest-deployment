@@ -2,8 +2,10 @@ import { Controller, Post, Body, UseGuards, Request, Res, Response } from '@nest
 import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LineLoginDto } from './dto/line-login.dto';
+import { SendEmailVerificationDto } from './dto/send-email-verification.dto';
+import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto';
+import { SignupDto } from './dto/signup.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -34,6 +36,47 @@ export class AuthController {
     return await this.authService.checkEmail(body.email);
   }
 
+  @Post('email-verification/send')
+  @ApiOperation({
+    summary: '회원가입 이메일 인증코드 발송',
+    description: '회원가입 이메일로 6자리 인증코드를 발송합니다.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '인증코드 발송 성공',
+    schema: {
+      example: {
+        message: '인증 코드를 발송했습니다.',
+        expiresInMinutes: 10,
+      },
+    },
+  })
+  async sendEmailVerificationCode(@Body() body: SendEmailVerificationDto) {
+    return await this.authService.sendEmailVerificationCode(body.email);
+  }
+
+  @Post('email-verification/verify')
+  @ApiOperation({
+    summary: '회원가입 이메일 인증코드 검증',
+    description: '이메일+인증코드를 검증하고 회원가입용 인증 토큰을 발급합니다.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '인증 성공',
+    schema: {
+      example: {
+        verified: true,
+        emailVerificationToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+      },
+    },
+  })
+  async verifyEmailVerificationCode(@Body() body: VerifyEmailVerificationDto) {
+    return await this.authService.verifyEmailVerificationCode(
+      body.email,
+      body.code,
+    );
+  }
+
   // 이메일/비번으로 회원가입
   // 닉네임 안보내면 랜덤으로 생성됨 (한글/일본어 둘 다)
   @Post('signup')
@@ -48,7 +91,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 400, description: '유효성 검사 실패' })
   @ApiResponse({ status: 409, description: '이미 사용중인 이메일' })
-  async signup(@Body() createUserDto: CreateUserDto) {
+  async signup(@Body() createUserDto: SignupDto) {
     return await this.authService.signup(createUserDto);
   }
 
