@@ -18,6 +18,10 @@ import { Settlement } from './settlements/entities/settlement.entity';
 import { SettlementItem } from './settlements/entities/settlement-item.entity';
 import { SettlementItemMember } from './settlements/entities/settlement-item-member.entity';
 import { SettlementPayment } from './settlements/entities/settlement-payment.entity';
+import { CommunityModule } from './community/community.module';
+import { CommunityPost } from './community/entities/community-post.entity';
+import { CommunityPostLike } from './community/entities/community-post-like.entity';
+import { CommunityComment } from './community/entities/community-comment.entity';
 import { EmailVerification } from './auth/entities/email-verification.entity';
 
 @Module({
@@ -49,6 +53,9 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
           SettlementItem,
           SettlementItemMember,
           SettlementPayment,
+          CommunityPost,
+          CommunityPostLike,
+          CommunityComment,
           EmailVerification,
         ],
         synchronize: true,
@@ -63,6 +70,7 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
     ChatModule, // 팀원 (채팅)
     ReviewsModule, // 추가 (후기)
     SettlementsModule, // 정산
+    CommunityModule, // 커뮤니티
   ],
   controllers: [],
   providers: [],
