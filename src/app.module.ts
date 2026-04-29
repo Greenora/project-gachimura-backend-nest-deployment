@@ -22,6 +22,7 @@ import { CommunityModule } from './community/community.module';
 import { CommunityPost } from './community/entities/community-post.entity';
 import { CommunityPostLike } from './community/entities/community-post-like.entity';
 import { CommunityComment } from './community/entities/community-comment.entity';
+import { EmailVerification } from './auth/entities/email-verification.entity';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { CommunityComment } from './community/entities/community-comment.entity'
           CommunityPost,
           CommunityPostLike,
           CommunityComment,
+          EmailVerification,
         ],
         synchronize: true,
         charset: 'utf8mb4',
