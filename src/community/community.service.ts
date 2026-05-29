@@ -77,21 +77,47 @@ export class CommunityService {
     return post;
   }
 
-  async findFeed(limit = 30, cursor?: string, currentUserId?: number) {
+  async findFeed(limit = 30, cursor?: string, currentUserId?: number, sort?: string) {
     const safeLimit = Number.isFinite(limit)
       ? Math.min(Math.max(limit, 1), 100)
       : 30;
+
+    const validSort = sort && ['latest', 'popular', 'comments'].includes(sort) ? sort : 'latest';
 
     const cursorPayload = this.parseCursor(cursor);
 
     const qb = this.communityPostRepository
       .createQueryBuilder('post')
-      .leftJoinAndSelect('post.author', 'author')
-      .orderBy('post.createdAt', 'DESC')
-      .addOrderBy('post.id', 'DESC')
-      .take(safeLimit + 1);
+      .leftJoinAndSelect('post.author', 'author');
 
-    if (cursorPayload) {
+    // 정렬 방식에 따라 서브쿼리 추가
+    if (validSort === 'popular') {
+      qb.addSelect((subQuery) => {
+        return subQuery
+          .select('COUNT(pl.id)', 'likeCount')
+          .from(CommunityPostLike, 'pl')
+          .where('pl.postId = post.id');
+      }, 'sortLikeCount')
+        .orderBy('sortLikeCount', 'DESC')
+        .addOrderBy('post.createdAt', 'DESC');
+    } else if (validSort === 'comments') {
+      qb.addSelect((subQuery) => {
+        return subQuery
+          .select('COUNT(cc.id)', 'commentCount')
+          .from(CommunityComment, 'cc')
+          .where('cc.postId = post.id');
+      }, 'sortCommentCount')
+        .orderBy('sortCommentCount', 'DESC')
+        .addOrderBy('post.createdAt', 'DESC');
+    } else {
+      qb.orderBy('post.createdAt', 'DESC')
+        .addOrderBy('post.id', 'DESC');
+    }
+
+    qb.take(safeLimit + 1);
+
+    // 커서 기반 페이지네이션은 latest 정렬에서만 적용
+    if (cursorPayload && validSort === 'latest') {
       qb.andWhere(
         '(post.createdAt < :cursorCreatedAt OR (post.createdAt = :cursorCreatedAt AND post.id < :cursorId))',
         {
@@ -99,6 +125,12 @@ export class CommunityService {
           cursorId: cursorPayload.id,
         },
       );
+    } else if (cursorPayload) {
+      // popular/comments 정렬에서는 offset 기반으로 대체
+      const offset = cursor ? parseInt(cursor, 10) : 0;
+      if (Number.isFinite(offset) && offset > 0) {
+        qb.skip(offset);
+      }
     }
 
     const rows = await qb.getMany();
@@ -141,7 +173,16 @@ export class CommunityService {
     );
     const likedByMeSet = new Set<number>(likedRows.map((row) => row.postId));
 
-    const nextCursor = hasMore ? this.makeCursor(items[items.length - 1]) : null;
+    let nextCursor: string | null = null;
+    if (hasMore) {
+      if (validSort === 'latest') {
+        nextCursor = this.makeCursor(items[items.length - 1]);
+      } else {
+        // popular/comments 정렬: offset 기반 커서
+        const currentOffset = cursor ? parseInt(cursor, 10) : 0;
+        nextCursor = String((Number.isFinite(currentOffset) ? currentOffset : 0) + safeLimit);
+      }
+    }
 
     return {
       items: items.map((post) =>
