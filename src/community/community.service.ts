@@ -131,11 +131,11 @@ export class CommunityService {
           cursorId: cursorPayload.id,
         },
       );
-    } else if (cursorPayload) {
+    } else if (cursor) {
       // TODO: 인기순/댓글순의 경우 offset 기반 페이징을 임시로 사용,
       // 데이터가 새로 생성되거나 변경될 때 중복 노출 혹은 누락이 발생할 수 있고 데이터가 많아질수록 조회 성능이 떨어질 수 있음
       // 차후 '좋아요수_게시글ID' 조합 등의 복합 커서 기반 페이지네이션으로 전환하는 것을 권장
-      const offset = cursor ? parseInt(cursor, 10) : 0;
+      const offset = parseInt(cursor, 10);
       if (Number.isFinite(offset) && offset > 0) {
         qb.skip(offset);
       }
