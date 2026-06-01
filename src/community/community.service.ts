@@ -21,7 +21,7 @@ export class CommunityService {
     private readonly communityPostLikeRepository: Repository<CommunityPostLike>,
     @InjectRepository(CommunityComment)
     private readonly communityCommentRepository: Repository<CommunityComment>,
-  ) {}
+  ) { }
 
   private mapPost(
     post: CommunityPost,
@@ -77,7 +77,12 @@ export class CommunityService {
     return post;
   }
 
-  async findFeed(limit = 30, cursor?: string, currentUserId?: number, sort?: string) {
+  async findFeed(
+    limit = 30,
+    cursor?: string,
+    currentUserId?: number,
+    sort?: 'latest' | 'popular' | 'comments',
+  ) {
     const safeLimit = Number.isFinite(limit)
       ? Math.min(Math.max(limit, 1), 100)
       : 30;
@@ -116,7 +121,8 @@ export class CommunityService {
 
     qb.take(safeLimit + 1);
 
-    // 커서 기반 페이지네이션은 latest 정렬에서만 적용
+    // 정렬 기준이 변경되면 기존에 발급된 cursor가 더 이상 유효하지 않으므로 클라이언트에서 새롭게 조회해야 함.
+    // 커서 기반 페이지네이션은 오직 최신순(latest) 정렬에서만 적용
     if (cursorPayload && validSort === 'latest') {
       qb.andWhere(
         '(post.createdAt < :cursorCreatedAt OR (post.createdAt = :cursorCreatedAt AND post.id < :cursorId))',
@@ -126,7 +132,9 @@ export class CommunityService {
         },
       );
     } else if (cursorPayload) {
-      // popular/comments 정렬에서는 offset 기반으로 대체
+      // TODO: 인기순/댓글순의 경우 offset 기반 페이징을 임시로 사용,
+      // 데이터가 새로 생성되거나 변경될 때 중복 노출 혹은 누락이 발생할 수 있고 데이터가 많아질수록 조회 성능이 떨어질 수 있음
+      // 차후 '좋아요수_게시글ID' 조합 등의 복합 커서 기반 페이지네이션으로 전환하는 것을 권장
       const offset = cursor ? parseInt(cursor, 10) : 0;
       if (Number.isFinite(offset) && offset > 0) {
         qb.skip(offset);
@@ -140,29 +148,29 @@ export class CommunityService {
 
     const likeRows = postIds.length
       ? await this.communityPostLikeRepository
-          .createQueryBuilder('like')
-          .select('like.postId', 'postId')
-          .addSelect('COUNT(1)', 'count')
-          .where('like.postId IN (:...postIds)', { postIds })
-          .groupBy('like.postId')
-          .getRawMany<{ postId: string; count: string }>()
+        .createQueryBuilder('like')
+        .select('like.postId', 'postId')
+        .addSelect('COUNT(1)', 'count')
+        .where('like.postId IN (:...postIds)', { postIds })
+        .groupBy('like.postId')
+        .getRawMany<{ postId: string; count: string }>()
       : [];
 
     const commentRows = postIds.length
       ? await this.communityCommentRepository
-          .createQueryBuilder('comment')
-          .select('comment.postId', 'postId')
-          .addSelect('COUNT(1)', 'count')
-          .where('comment.postId IN (:...postIds)', { postIds })
-          .groupBy('comment.postId')
-          .getRawMany<{ postId: string; count: string }>()
+        .createQueryBuilder('comment')
+        .select('comment.postId', 'postId')
+        .addSelect('COUNT(1)', 'count')
+        .where('comment.postId IN (:...postIds)', { postIds })
+        .groupBy('comment.postId')
+        .getRawMany<{ postId: string; count: string }>()
       : [];
 
     const likedRows = currentUserId && postIds.length
       ? await this.communityPostLikeRepository.find({
-          select: { postId: true },
-          where: { userId: currentUserId, postId: In(postIds) },
-        })
+        select: { postId: true },
+        where: { userId: currentUserId, postId: In(postIds) },
+      })
       : [];
 
     const likeCountMap = new Map<number, number>(

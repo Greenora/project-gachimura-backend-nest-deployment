@@ -34,7 +34,7 @@ export class CommunityController {
     @Req() req: AuthenticatedRequest,
     @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
-    @Query('sort') sort?: string,
+    @Query('sort') sort?: 'latest' | 'popular' | 'comments',
   ) {
     return this.communityService.findFeed(limit, cursor, req.user.id, sort);
   }
