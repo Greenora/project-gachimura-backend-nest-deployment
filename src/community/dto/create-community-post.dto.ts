@@ -1,5 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import {
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { COMMUNITY_LOCALES } from '../community-locale.constants';
+import type { CommunityLocale } from '../community-locale.constants';
 
 export class CreateCommunityPostDto {
   @ApiProperty({
@@ -11,4 +19,14 @@ export class CreateCommunityPostDto {
   @IsNotEmpty()
   @MaxLength(500)
   content: string;
+
+  @ApiProperty({
+    description: '커뮤니티 언어 구분',
+    enum: COMMUNITY_LOCALES,
+    required: false,
+    default: 'ko',
+  })
+  @IsOptional()
+  @IsIn(COMMUNITY_LOCALES)
+  locale?: CommunityLocale;
 }
