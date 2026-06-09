@@ -104,7 +104,8 @@ export class CommunityService {
           .where('pl.postId = post.id');
       }, 'sortLikeCount')
         .orderBy('sortLikeCount', 'DESC')
-        .addOrderBy('post.createdAt', 'DESC');
+        .addOrderBy('post.createdAt', 'DESC')
+        .addOrderBy('post.id', 'DESC');
     } else if (validSort === 'comments') {
       qb.addSelect((subQuery) => {
         return subQuery
@@ -113,7 +114,8 @@ export class CommunityService {
           .where('cc.postId = post.id');
       }, 'sortCommentCount')
         .orderBy('sortCommentCount', 'DESC')
-        .addOrderBy('post.createdAt', 'DESC');
+        .addOrderBy('post.createdAt', 'DESC')
+        .addOrderBy('post.id', 'DESC');
     } else {
       qb.orderBy('post.createdAt', 'DESC')
         .addOrderBy('post.id', 'DESC');
