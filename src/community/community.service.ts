@@ -6,6 +6,11 @@ import { CreateCommunityPostDto } from './dto/create-community-post.dto';
 import { CommunityPostLike } from './entities/community-post-like.entity';
 import { CommunityComment } from './entities/community-comment.entity';
 import { CreateCommunityCommentDto } from './dto/create-community-comment.dto';
+import {
+  COMMUNITY_LOCALES,
+  CommunityLocale,
+  DEFAULT_COMMUNITY_LOCALE,
+} from './community-locale.constants';
 
 interface CursorPayload {
   createdAt: Date;
@@ -21,7 +26,7 @@ export class CommunityService {
     private readonly communityPostLikeRepository: Repository<CommunityPostLike>,
     @InjectRepository(CommunityComment)
     private readonly communityCommentRepository: Repository<CommunityComment>,
-  ) { }
+  ) {}
 
   private mapPost(
     post: CommunityPost,
@@ -32,6 +37,7 @@ export class CommunityService {
     return {
       id: post.id,
       content: post.content,
+      locale: post.locale,
       createdAt: post.createdAt,
       likeCount,
       commentCount,
@@ -69,8 +75,16 @@ export class CommunityService {
     return `${post.createdAt.toISOString()}_${post.id}`;
   }
 
+  private normalizeLocale(locale?: string): CommunityLocale {
+    return COMMUNITY_LOCALES.includes(locale as CommunityLocale)
+      ? (locale as CommunityLocale)
+      : DEFAULT_COMMUNITY_LOCALE;
+  }
+
   private async ensurePostExists(postId: number) {
-    const post = await this.communityPostRepository.findOne({ where: { id: postId } });
+    const post = await this.communityPostRepository.findOne({
+      where: { id: postId },
+    });
     if (!post) {
       throw new NotFoundException('게시글을 찾을 수 없습니다.');
     }
@@ -82,18 +96,24 @@ export class CommunityService {
     cursor?: string,
     currentUserId?: number,
     sort?: 'latest' | 'popular' | 'comments',
+    locale?: string,
   ) {
     const safeLimit = Number.isFinite(limit)
       ? Math.min(Math.max(limit, 1), 100)
       : 30;
 
-    const validSort = sort && ['latest', 'popular', 'comments'].includes(sort) ? sort : 'latest';
+    const validSort =
+      sort && ['latest', 'popular', 'comments'].includes(sort)
+        ? sort
+        : 'latest';
+    const normalizedLocale = this.normalizeLocale(locale);
 
     const cursorPayload = this.parseCursor(cursor);
 
     const qb = this.communityPostRepository
       .createQueryBuilder('post')
-      .leftJoinAndSelect('post.author', 'author');
+      .leftJoinAndSelect('post.author', 'author')
+      .where('post.locale = :locale', { locale: normalizedLocale });
 
     // 정렬 방식에 따라 서브쿼리 추가
     if (validSort === 'popular') {
@@ -117,8 +137,7 @@ export class CommunityService {
         .addOrderBy('post.createdAt', 'DESC')
         .addOrderBy('post.id', 'DESC');
     } else {
-      qb.orderBy('post.createdAt', 'DESC')
-        .addOrderBy('post.id', 'DESC');
+      qb.orderBy('post.createdAt', 'DESC').addOrderBy('post.id', 'DESC');
     }
 
     qb.take(safeLimit + 1);
@@ -150,30 +169,31 @@ export class CommunityService {
 
     const likeRows = postIds.length
       ? await this.communityPostLikeRepository
-        .createQueryBuilder('like')
-        .select('like.postId', 'postId')
-        .addSelect('COUNT(1)', 'count')
-        .where('like.postId IN (:...postIds)', { postIds })
-        .groupBy('like.postId')
-        .getRawMany<{ postId: string; count: string }>()
+          .createQueryBuilder('like')
+          .select('like.postId', 'postId')
+          .addSelect('COUNT(1)', 'count')
+          .where('like.postId IN (:...postIds)', { postIds })
+          .groupBy('like.postId')
+          .getRawMany<{ postId: string; count: string }>()
       : [];
 
     const commentRows = postIds.length
       ? await this.communityCommentRepository
-        .createQueryBuilder('comment')
-        .select('comment.postId', 'postId')
-        .addSelect('COUNT(1)', 'count')
-        .where('comment.postId IN (:...postIds)', { postIds })
-        .groupBy('comment.postId')
-        .getRawMany<{ postId: string; count: string }>()
+          .createQueryBuilder('comment')
+          .select('comment.postId', 'postId')
+          .addSelect('COUNT(1)', 'count')
+          .where('comment.postId IN (:...postIds)', { postIds })
+          .groupBy('comment.postId')
+          .getRawMany<{ postId: string; count: string }>()
       : [];
 
-    const likedRows = currentUserId && postIds.length
-      ? await this.communityPostLikeRepository.find({
-        select: { postId: true },
-        where: { userId: currentUserId, postId: In(postIds) },
-      })
-      : [];
+    const likedRows =
+      currentUserId && postIds.length
+        ? await this.communityPostLikeRepository.find({
+            select: { postId: true },
+            where: { userId: currentUserId, postId: In(postIds) },
+          })
+        : [];
 
     const likeCountMap = new Map<number, number>(
       likeRows.map((row) => [Number(row.postId), Number(row.count)]),
@@ -190,7 +210,9 @@ export class CommunityService {
       } else {
         // popular/comments 정렬: offset 기반 커서
         const currentOffset = cursor ? parseInt(cursor, 10) : 0;
-        nextCursor = String((Number.isFinite(currentOffset) ? currentOffset : 0) + safeLimit);
+        nextCursor = String(
+          (Number.isFinite(currentOffset) ? currentOffset : 0) + safeLimit,
+        );
       }
     }
 
@@ -208,13 +230,15 @@ export class CommunityService {
     };
   }
 
-  async findTrendingTopics(limit = 5) {
+  async findTrendingTopics(limit = 5, locale?: string) {
     const safeLimit = Number.isFinite(limit)
       ? Math.min(Math.max(limit, 1), 20)
       : 5;
+    const normalizedLocale = this.normalizeLocale(locale);
 
     const recentPosts = await this.communityPostRepository.find({
       select: { content: true },
+      where: { locale: normalizedLocale },
       order: { createdAt: 'DESC' },
       take: 300,
     });
@@ -249,6 +273,7 @@ export class CommunityService {
     const post = this.communityPostRepository.create({
       authorId,
       content: dto.content,
+      locale: this.normalizeLocale(dto.locale),
     });
 
     const saved = await this.communityPostRepository.save(post);
@@ -300,6 +325,7 @@ export class CommunityService {
       id: comment.id,
       postId: comment.postId,
       content: comment.content,
+      locale: comment.locale,
       createdAt: comment.createdAt,
       author: {
         id: comment.author?.id,
@@ -315,12 +341,13 @@ export class CommunityService {
     postId: number,
     dto: CreateCommunityCommentDto,
   ) {
-    await this.ensurePostExists(postId);
+    const post = await this.ensurePostExists(postId);
 
     const comment = this.communityCommentRepository.create({
       authorId,
       postId,
       content: dto.content,
+      locale: post.locale,
     });
     const saved = await this.communityCommentRepository.save(comment);
     const created = await this.communityCommentRepository.findOne({
@@ -336,6 +363,7 @@ export class CommunityService {
       id: created.id,
       postId: created.postId,
       content: created.content,
+      locale: created.locale,
       createdAt: created.createdAt,
       author: {
         id: created.author?.id,

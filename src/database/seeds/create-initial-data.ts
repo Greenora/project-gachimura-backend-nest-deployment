@@ -89,41 +89,73 @@ async function bootstrap() {
       author: user1,
       authorId: user1.id,
       content: '대구 북구 쪽 코스트코 장보기 팁 공유해요. #코스트코 #장보기 #꿀팁',
+      locale: 'ko',
     },
     {
       author: user2,
       authorId: user2.id,
       content: '서울 중구 근처 장보기 끝! 저녁 시간대 할인 품목 은근 많네요. #이마트 #할인',
+      locale: 'ko',
     },
     {
       author: user3,
       authorId: user3.id,
       content: '연어/우유/계란 같이 사면 좋은 조합 추천받아요. #연어 #계란 #장바구니',
+      locale: 'ko',
     },
     {
       author: user4,
       authorId: user4.id,
       content: '오늘은 1+1 상품만 골라서 장봤는데 생각보다 절약 많이 됐어요. #1+1 #절약',
+      locale: 'ko',
     },
     {
       author: user1,
       authorId: user1.id,
       content: '주말엔 대용량 제품 나눔이 제일 효율 좋네요. #대용량 #나눔',
+      locale: 'ko',
     },
     {
       author: user2,
       authorId: user2.id,
       content: '비 오는 날엔 근처 마트만 돌려도 충분히 알뜰하게 장볼 수 있더라고요. #마트 #알뜰',
+      locale: 'ko',
     },
     {
       author: user3,
       authorId: user3.id,
       content: '오늘 본 할인 중 제일 괜찮았던 건 냉동식품 코너였어요. #냉동식품 #할인',
+      locale: 'ko',
     },
     {
       author: user4,
       authorId: user4.id,
       content: '커뮤니티가 조금 더 북적이면 좋겠어서 첫 글 남깁니다. 다들 장보기 정보 많이 공유해요! #커뮤니티 #첫글',
+      locale: 'ko',
+    },
+    {
+      author: user1,
+      authorId: user1.id,
+      content: '北区のコストコで買い物する時のコツを共有します。 #コストコ #買い物 #節約',
+      locale: 'ja',
+    },
+    {
+      author: user2,
+      authorId: user2.id,
+      content: '夕方のスーパーは割引品が多くて助かります。 #スーパー #割引',
+      locale: 'ja',
+    },
+    {
+      author: user3,
+      authorId: user3.id,
+      content: '大容量ヨーグルトを分けたい人いますか？ #大容量 #シェア',
+      locale: 'ja',
+    },
+    {
+      author: user4,
+      authorId: user4.id,
+      content: '冷凍食品コーナーのセールがかなり良かったです。 #冷凍食品 #割引',
+      locale: 'ja',
     },
   ]);
 
@@ -137,6 +169,7 @@ async function bootstrap() {
       author: user2,
       authorId: user2.id,
       content: '오 이 팁 좋네요. 오늘 저도 코스트코 갈 예정이었어요.',
+      locale: 'ko',
     },
     {
       post: savedCommunityPosts[0],
@@ -144,6 +177,7 @@ async function bootstrap() {
       author: user3,
       authorId: user3.id,
       content: '북구 쪽은 주차가 좀 복잡하던데, 시간대 추천 있나요?',
+      locale: 'ko',
     },
     {
       post: savedCommunityPosts[2],
@@ -151,6 +185,7 @@ async function bootstrap() {
       author: user1,
       authorId: user1.id,
       content: '연어는 냉장보다 냉동이 나을 때도 있더라고요!',
+      locale: 'ko',
     },
     {
       post: savedCommunityPosts[4],
@@ -158,6 +193,23 @@ async function bootstrap() {
       author: user4,
       authorId: user4.id,
       content: '대용량 제품은 확실히 나눠 사면 체감이 큽니다.',
+      locale: 'ko',
+    },
+    {
+      post: savedCommunityPosts[8],
+      postId: savedCommunityPosts[8].id,
+      author: user2,
+      authorId: user2.id,
+      content: 'この情報助かります。週末に行く予定でした。',
+      locale: 'ja',
+    },
+    {
+      post: savedCommunityPosts[9],
+      postId: savedCommunityPosts[9].id,
+      author: user3,
+      authorId: user3.id,
+      content: '夕方の割引は本当に狙い目です。',
+      locale: 'ja',
     },
   ]);
 
@@ -170,6 +222,10 @@ async function bootstrap() {
     { post: savedCommunityPosts[2], postId: savedCommunityPosts[2].id, user: user4, userId: user4.id },
     { post: savedCommunityPosts[4], postId: savedCommunityPosts[4].id, user: user2, userId: user2.id },
     { post: savedCommunityPosts[6], postId: savedCommunityPosts[6].id, user: user1, userId: user1.id },
+    { post: savedCommunityPosts[8], postId: savedCommunityPosts[8].id, user: user2, userId: user2.id },
+    { post: savedCommunityPosts[8], postId: savedCommunityPosts[8].id, user: user3, userId: user3.id },
+    { post: savedCommunityPosts[9], postId: savedCommunityPosts[9].id, user: user1, userId: user1.id },
+    { post: savedCommunityPosts[10], postId: savedCommunityPosts[10].id, user: user4, userId: user4.id },
   ]);
 
   console.log('✅ 커뮤니티 댓글/좋아요 생성 완료');

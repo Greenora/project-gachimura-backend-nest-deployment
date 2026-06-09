@@ -9,6 +9,8 @@ import {
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { CommunityPost } from './community-post.entity';
+import { DEFAULT_COMMUNITY_LOCALE } from '../community-locale.constants';
+import type { CommunityLocale } from '../community-locale.constants';
 
 @Entity('community_comments')
 export class CommunityComment {
@@ -23,6 +25,9 @@ export class CommunityComment {
 
   @Column({ type: 'text' })
   content: string;
+
+  @Column({ length: 2, default: DEFAULT_COMMUNITY_LOCALE })
+  locale: CommunityLocale;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

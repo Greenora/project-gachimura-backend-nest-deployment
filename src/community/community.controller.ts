@@ -1,4 +1,4 @@
-  import {
+import {
   Body,
   Controller,
   DefaultValuePipe,
@@ -35,16 +35,24 @@ export class CommunityController {
     @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit: number,
     @Query('cursor') cursor?: string,
     @Query('sort') sort?: 'latest' | 'popular' | 'comments',
+    @Query('locale') locale?: 'ko' | 'ja',
   ) {
-    return this.communityService.findFeed(limit, cursor, req.user.id, sort);
+    return this.communityService.findFeed(
+      limit,
+      cursor,
+      req.user.id,
+      sort,
+      locale,
+    );
   }
 
   @Get('topics/trending')
   @ApiOperation({ summary: '커뮤니티 인기 토픽 조회' })
   findTrendingTopics(
     @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number,
+    @Query('locale') locale?: 'ko' | 'ja',
   ) {
-    return this.communityService.findTrendingTopics(limit);
+    return this.communityService.findTrendingTopics(limit, locale);
   }
 
   @Post('posts')
