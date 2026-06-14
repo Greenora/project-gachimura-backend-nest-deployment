@@ -59,6 +59,12 @@ export class AuthService {
     private readonly emailVerificationRepository: Repository<EmailVerification>,
   ) {}
 
+  private isEmailVerificationRequired(): boolean {
+    const rawValue =
+      this.configService.get<string>('EMAIL_VERIFICATION_REQUIRED') ?? 'false';
+    return rawValue.toLowerCase() === 'true';
+  }
+
   private hashVerificationCode(code: string): string {
     return createHash('sha256').update(code).digest('hex');
   }
@@ -173,6 +179,13 @@ export class AuthService {
       throw new BadRequestException('이미 가입된 이메일입니다.');
     }
 
+    if (!this.isEmailVerificationRequired()) {
+      return {
+        message: '개발 모드에서는 이메일 인증이 비활성화되어 있습니다.',
+        expiresInMinutes: this.verificationCodeExpireMinutes,
+      };
+    }
+
     const latestRequest = await this.emailVerificationRepository.findOne({
       where: { email },
       order: { createdAt: 'DESC' },
@@ -213,6 +226,13 @@ export class AuthService {
     email: string,
     code: string,
   ): Promise<{ verified: boolean; emailVerificationToken: string }> {
+    if (!this.isEmailVerificationRequired()) {
+      return {
+        verified: true,
+        emailVerificationToken: this.createSignupVerificationToken(email),
+      };
+    }
+
     const now = new Date();
     const verification = await this.emailVerificationRepository.findOne({
       where: { email },
@@ -254,10 +274,16 @@ export class AuthService {
   }
 
   async signup(body: SignupDto): Promise<{ message: string }> {
-    this.validateSignupVerificationToken(
-      body.emailVerificationToken,
-      body.email,
-    );
+    if (this.isEmailVerificationRequired()) {
+      if (!body.emailVerificationToken) {
+        throw new BadRequestException('이메일 인증 토큰이 필요합니다.');
+      }
+
+      this.validateSignupVerificationToken(
+        body.emailVerificationToken,
+        body.email,
+      );
+    }
 
     const createUserBody: CreateUserDto = {
       email: body.email,
