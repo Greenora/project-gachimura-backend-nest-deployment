@@ -1,11 +1,26 @@
-import { Controller, Post, Body, UseGuards, Request, Res, Response } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Request,
+  Res,
+  Response,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiTags, ApiOperation, ApiBody, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBody,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LineLoginDto } from './dto/line-login.dto';
 import { SendEmailVerificationDto } from './dto/send-email-verification.dto';
 import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto';
 import { SignupDto } from './dto/signup.dto';
+import { KakaoLoginDto } from './dto/kakao-login.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -58,7 +73,8 @@ export class AuthController {
   @Post('email-verification/verify')
   @ApiOperation({
     summary: '회원가입 이메일 인증코드 검증',
-    description: '이메일+인증코드를 검증하고 회원가입용 인증 토큰을 발급합니다.',
+    description:
+      '이메일+인증코드를 검증하고 회원가입용 인증 토큰을 발급합니다.',
   })
   @ApiResponse({
     status: 200,
@@ -126,10 +142,10 @@ export class AuthController {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         expiresIn: 3600,
-        user: { 
-          email: 'user@example.com', 
+        user: {
+          email: 'user@example.com',
           nickname: '(랜덤 생성)',
-          nickname_jp: '(랜덤 생성)'
+          nickname_jp: '(랜덤 생성)',
         },
       },
     },
@@ -147,17 +163,21 @@ export class AuthController {
   @Post('kakao')
   @ApiOperation({
     summary: '카카오 로그인',
-    description:
-      '카카오 액세스 토큰으로 로그인/회원가입. 신규 유저는 자동 가입됨',
+    description: '카카오 인가 코드로 로그인/회원가입. 신규 유저는 자동 가입됨',
   })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        kakaoAccessToken: {
+        code: {
           type: 'string',
-          example: 'kakao_access_token_here',
-          description: '카카오 SDK에서 받은 액세스 토큰',
+          example: 'kakao_authorization_code_here',
+          description: '카카오 OAuth에서 받은 인가 코드',
+        },
+        redirectUri: {
+          type: 'string',
+          example: 'http://localhost:3000/kakao/callback',
+          description: '카카오 Developers 콘솔에 등록한 Redirect URI',
         },
         language: {
           type: 'string',
@@ -165,7 +185,7 @@ export class AuthController {
           description: '언어 설정 (ko/jp)',
         },
       },
-      required: ['kakaoAccessToken'],
+      required: ['code', 'redirectUri'],
     },
   })
   @ApiResponse({
@@ -176,19 +196,18 @@ export class AuthController {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         expiresIn: 3600,
-        user: { 
-          email: 'kakao@kakao.com', 
+        user: {
+          email: 'kakao@kakao.com',
           nickname: '(랜덤 생성)',
-          nickname_jp: '(랜덤 생성)'
+          nickname_jp: '(랜덤 생성)',
         },
       },
     },
   })
-  async kakaoLogin(
-    @Body() body: { kakaoAccessToken: string; language?: string },
-  ) {
+  async kakaoLogin(@Body() body: KakaoLoginDto) {
     return await this.authService.loginWithKakao(
-      body.kakaoAccessToken,
+      body.code,
+      body.redirectUri,
       body.language,
     );
   }
@@ -199,8 +218,7 @@ export class AuthController {
   @Post('line')
   @ApiOperation({
     summary: 'LINE 로그인',
-    description:
-      'LINE 인가 코드로 로그인/회원가입. 신규 유저는 자동 가입됨',
+    description: 'LINE 인가 코드로 로그인/회원가입. 신규 유저는 자동 가입됨',
   })
   @ApiBody({
     schema: {
@@ -214,7 +232,8 @@ export class AuthController {
         redirectUri: {
           type: 'string',
           example: 'http://localhost:3000/line/callback',
-          description: 'LINE Developers 콘솔에 등록한 Callback URL (100% 일치 필요)',
+          description:
+            'LINE Developers 콘솔에 등록한 Callback URL (100% 일치 필요)',
         },
         language: {
           type: 'string',
@@ -233,10 +252,10 @@ export class AuthController {
         accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         expiresIn: 3600,
-        user: { 
-          email: 'U1234567890@line.me', 
+        user: {
+          email: 'U1234567890@line.me',
           nickname: '(랜덤 생성)',
-          nickname_jp: '(랜덤 생성)'
+          nickname_jp: '(랜덤 생성)',
         },
       },
     },
@@ -244,9 +263,9 @@ export class AuthController {
   @ApiResponse({ status: 500, description: 'LINE 인증 실패' })
   async lineLogin(@Body() body: LineLoginDto) {
     return await this.authService.loginWithLine(
-      body.code, 
-      body.redirectUri, 
-      body.language
+      body.code,
+      body.redirectUri,
+      body.language,
     );
   }
 
@@ -256,7 +275,8 @@ export class AuthController {
   @Post('refresh')
   @ApiOperation({
     summary: '토큰 갱신',
-    description: '로그인 시 발급받은 Refresh Token으로 새로운 Access Token을 발급받습니다. Access Token이 만료되었을 때 사용하세요.',
+    description:
+      '로그인 시 발급받은 Refresh Token으로 새로운 Access Token을 발급받습니다. Access Token이 만료되었을 때 사용하세요.',
   })
   @ApiBody({
     schema: {
@@ -275,17 +295,22 @@ export class AuthController {
     status: 200,
     description: '토큰 갱신 성공',
     schema: {
-      example: { accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...새로운토큰' },
+      example: {
+        accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...새로운토큰',
+      },
     },
   })
-  @ApiResponse({ status: 401, description: '유효하지 않거나 만료된 Refresh Token' })
+  @ApiResponse({
+    status: 401,
+    description: '유효하지 않거나 만료된 Refresh Token',
+  })
   async refresh(@Body() body: { refreshToken: string }) {
     return await this.authService.refresh(body.refreshToken);
   }
 
   // 로그아웃 - DB에서 Refresh Token 삭제함
   // 주의: JWT 인증 필요 (Bearer 토큰 헤더에 넣어야 함)
-  // 
+  //
   // TODO: 나중에 프론트에서 로그아웃 버튼 만들 때 사용
   // 사용법:
   // 1. 이 API 호출해서 서버에서 Refresh Token 삭제
@@ -307,7 +332,11 @@ export class AuthController {
   async logout(@Request() req: { user: { id: number } }, @Res() res) {
     await this.authService.logout(req.user.id);
     // 쿠키 만료 헤더 내려주기
-    res.clearCookie('refreshToken', { path: '/', httpOnly: true, secure: true });
+    res.clearCookie('refreshToken', {
+      path: '/',
+      httpOnly: true,
+      secure: true,
+    });
     res.clearCookie('accessToken', { path: '/', httpOnly: true, secure: true });
     return res.status(200).json({ message: '로그아웃 되었습니다.' });
   }
