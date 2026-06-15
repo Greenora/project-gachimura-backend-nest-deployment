@@ -13,6 +13,7 @@ import * as qs from 'qs'; // URL 쿼리스트링 변환 라이브러리
 import axios from 'axios'; // HTTP 요청 라이브러리 (카카오/LINE API 호출용)
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { NICKNAME_DATA } from './nickname.constants';
 
 // 카카오 로그인 응답 타입
@@ -289,7 +290,7 @@ export class UsersService {
   }
 
   // 유저 위치 및 프로필 정보 업데이트
-  async updateLocation(userId: number, data: any) {
+  async updateLocation(userId: number, data: UpdateProfileDto) {
     const updateFields: any = {};
 
     if (data.latitude !== undefined) updateFields.latitude = data.latitude;

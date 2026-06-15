@@ -11,6 +11,8 @@ import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 
+import { UpdateProfileDto } from './dto/update-profile.dto';
+
 // 유저 정보 조회 API
 @ApiTags('Users')
 @Controller('users')
@@ -66,23 +68,13 @@ export class UsersController {
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('access-token')
   @ApiOperation({
-    summary: '프로필(위치) 수정',
-    description: '유저의 위치 정보(latitude, longitude, region, district)를 업데이트합니다.',
+    summary: '프로필(위치, 닉네임, 계좌) 수정',
+    description: '유저의 위치 정보(latitude, longitude, region, district), 닉네임, 계좌 정보를 업데이트합니다.',
   })
-  @ApiBody({
-    schema: {
-      example: {
-        latitude: 35.8714,
-        longitude: 128.6014,
-        region: '대구광역시',
-        district: '수성구',
-      },
-    },
-  })
+  @ApiBody({ type: UpdateProfileDto })
   @ApiResponse({ status: 200, description: '업데이트 성공' })
-  async updateProfile(@Request() req, @Body() updateData: any) {
+  async updateProfile(@Request() req, @Body() updateData: UpdateProfileDto) {
     // req.user.id는 토큰에서 추출한 내 ID
-    // updateData에는 { latitude, longitude, region, district }가 들어옴
     return this.usersService.updateLocation(req.user.id, updateData);
   }
 
