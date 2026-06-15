@@ -4,18 +4,27 @@ import {
   WebSocketServer,
   MessageBody,
   ConnectedSocket,
+  OnGatewayConnection,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ChatMessage } from '../chat-message/entities/chat-message.entity';
+import { AuthService } from '../auth/auth.service';
 
-interface ChatPayload {
-  userId: number;
+interface ClientChatPayload {
   partyId: number;
   message: string;
-  nickname: string;
-  profileImage?: string | null;
+}
+
+interface JoinRoomPayload {
+  partyId: number;
+}
+
+interface AuthenticatedSocketData {
+  user?: {
+    id: number;
+  };
 }
 
 import { PartyMember } from '../party-members/entities/party-member.entity';
@@ -26,7 +35,7 @@ import { PartyMember } from '../party-members/entities/party-member.entity';
     credentials: true,
   },
 })
-export class ChatGateway {
+export class ChatGateway implements OnGatewayConnection {
   @WebSocketServer()
   server: Server;
 
@@ -36,31 +45,63 @@ export class ChatGateway {
     private chatRepository: Repository<ChatMessage>,
     @InjectRepository(PartyMember)
     private memberRepository: Repository<PartyMember>,
+    private authService: AuthService,
   ) {}
+
+  handleConnection(client: Socket): void {
+    const token = (client.handshake.auth as Record<string, unknown> | undefined)
+      ?.token;
+    if (typeof token !== 'string' || !token) {
+      client.emit('error', '채팅 연결에 인증 토큰이 필요합니다.');
+      client.disconnect(true);
+      return;
+    }
+
+    try {
+      const payload = this.authService.verifyAccessToken(token);
+      const socketData = client.data as AuthenticatedSocketData;
+      socketData.user = {
+        id: payload.sub,
+      };
+    } catch {
+      client.emit('error', '채팅 인증에 실패했습니다.');
+      client.disconnect(true);
+    }
+  }
 
   @SubscribeMessage('joinRoom')
   async handleJoinRoom(
-    @MessageBody() data: { userId: number; partyId: number },
+    @MessageBody() data: JoinRoomPayload | undefined,
     @ConnectedSocket() client: Socket,
   ): Promise<void> {
-    // 1. 해당 모임의 승인된 멤버인지 확인
+    const socketData = client.data as AuthenticatedSocketData;
+    const userId = socketData.user?.id;
+    if (
+      typeof userId !== 'number' ||
+      typeof data?.partyId !== 'number' ||
+      !Number.isInteger(data.partyId) ||
+      data.partyId < 1
+    ) {
+      client.emit('error', '올바르지 않은 채팅방 요청입니다.');
+      client.disconnect(true);
+      return;
+    }
+
     const member = await this.memberRepository.findOne({
       where: {
         partyId: data.partyId,
-        userId: data.userId,
+        userId,
         status: 'APPROVED',
       },
-      relations: { user: true },
     });
 
     if (member) {
-      // 2. 소켓 룸 입장
       const roomName = `party_${data.partyId}`;
-      client.join(roomName);
-      console.log(`[Socket] User ${data.userId} joined room: ${roomName}`);
+      await client.join(roomName);
+      console.log(`[Socket] User ${userId} joined room: ${roomName}`);
     } else {
       console.log(
-        `[Socket] Access denied for User ${data.userId} to Party ${data.partyId}`,
+        `[Socket] Access denied for User ${userId} to Party ${data.partyId}`,
       );
       client.emit('error', '해당 모임의 멤버가 아닙니다.');
     }
@@ -68,37 +109,61 @@ export class ChatGateway {
 
   @SubscribeMessage('message')
   async handleMessage(
-    @MessageBody() payload: ChatPayload,
+    @MessageBody() payload: ClientChatPayload | undefined,
     @ConnectedSocket() client: Socket,
   ): Promise<void> {
-    // 1. 해당 모임의 승인된 멤버인지 다시 한 번 확인 (보안)
+    const socketData = client.data as AuthenticatedSocketData;
+    const userId = socketData.user?.id;
+    if (
+      typeof userId !== 'number' ||
+      typeof payload?.partyId !== 'number' ||
+      !Number.isInteger(payload.partyId) ||
+      payload.partyId < 1 ||
+      typeof payload.message !== 'string' ||
+      !payload.message.trim() ||
+      payload.message.length > 2000
+    ) {
+      client.emit('error', '올바르지 않은 채팅 메시지입니다.');
+      return;
+    }
+
+    const roomName = `party_${payload.partyId}`;
+    if (!client.rooms.has(roomName)) {
+      client.emit('error', '채팅방에 먼저 입장해주세요.');
+      return;
+    }
+
     const member = await this.memberRepository.findOne({
       where: {
         partyId: payload.partyId,
-        userId: payload.userId,
+        userId,
         status: 'APPROVED',
       },
+      relations: { user: true },
     });
 
     if (!member) return;
 
-    console.log(
-      `[Room ${payload.partyId}] User ${payload.userId}: ${payload.message}`,
-    );
+    const message = payload.message.trim();
+    console.log(`[Room ${payload.partyId}] User ${userId}: ${message}`);
 
-    // 2. DB에 저장
     const newChat = this.chatRepository.create({
       partyId: payload.partyId,
-      senderId: payload.userId,
-      content: payload.message,
+      senderId: userId,
+      content: message,
       messageType: 'TALK',
     });
 
     const savedChat = await this.chatRepository.save(newChat);
 
-    const roomName = `party_${payload.partyId}`;
     this.server.to(roomName).emit('message', {
-      ...payload,
+      userId,
+      partyId: payload.partyId,
+      message,
+      nickname: member.user.nickname,
+      nickname_jp: member.user.nickname_jp,
+      profileImage: member.user.profileImage ?? null,
+      messageType: 'TALK',
       createdAt: savedChat.createdAt?.toISOString() || new Date().toISOString(),
     });
   }

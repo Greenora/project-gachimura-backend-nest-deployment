@@ -14,6 +14,7 @@ import axios from 'axios'; // HTTP 요청 라이브러리 (카카오/LINE API �
 import { User } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { NICKNAME_DATA } from './nickname.constants';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 // 카카오 로그인 응답 타입
 export interface KakaoLoginResponse {
@@ -289,8 +290,8 @@ export class UsersService {
   }
 
   // 유저 위치 및 프로필 정보 업데이트
-  async updateLocation(userId: number, data: any) {
-    const updateFields: any = {};
+  async updateLocation(userId: number, data: UpdateProfileDto) {
+    const updateFields: Partial<User> = {};
 
     if (data.latitude !== undefined) updateFields.latitude = data.latitude;
     if (data.longitude !== undefined) updateFields.longitude = data.longitude;
@@ -298,10 +299,13 @@ export class UsersService {
     if (data.district !== undefined) updateFields.district = data.district;
     if (data.bankCode !== undefined) updateFields.bankCode = data.bankCode;
     if (data.bankName !== undefined) updateFields.bankName = data.bankName;
-    if (data.accountNumber !== undefined) updateFields.accountNumber = data.accountNumber;
-    if (data.accountHolder !== undefined) updateFields.accountHolder = data.accountHolder;
+    if (data.accountNumber !== undefined)
+      updateFields.accountNumber = data.accountNumber;
+    if (data.accountHolder !== undefined)
+      updateFields.accountHolder = data.accountHolder;
     if (data.nickname !== undefined) updateFields.nickname = data.nickname;
-    if (data.nickname_jp !== undefined) updateFields.nickname_jp = data.nickname_jp;
+    if (data.nickname_jp !== undefined)
+      updateFields.nickname_jp = data.nickname_jp;
 
     await this.usersRepository.update(userId, updateFields);
 

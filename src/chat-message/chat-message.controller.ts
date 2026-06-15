@@ -1,9 +1,27 @@
-import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { ChatMessageService } from './chat-message.service';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
-import { ApiTags, ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 
 @ApiTags('Chat')
+@ApiBearerAuth('access-token')
+@UseGuards(AuthGuard('jwt'))
 @Controller('chat-message')
 export class ChatMessageController {
   constructor(private readonly chatMessageService: ChatMessageService) {}
@@ -26,8 +44,13 @@ export class ChatMessageController {
       },
     },
   })
-  create(@Body() createChatMessageDto: CreateChatMessageDto) {
-    return this.chatMessageService.create(createChatMessageDto);
+  @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
+  @ApiResponse({ status: 403, description: '승인된 모임 멤버가 아닌 사용자' })
+  create(
+    @Body() createChatMessageDto: CreateChatMessageDto,
+    @Req() req: { user: { id: number } },
+  ) {
+    return this.chatMessageService.create(createChatMessageDto, req.user.id);
   }
 
   @Get(':partyId')
@@ -51,7 +74,12 @@ export class ChatMessageController {
       ],
     },
   })
-  findAll(@Param('partyId') partyId: string) {
-    return this.chatMessageService.findAllByParty(+partyId);
+  @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
+  @ApiResponse({ status: 403, description: '승인된 모임 멤버가 아닌 사용자' })
+  findAll(
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Req() req: { user: { id: number } },
+  ) {
+    return this.chatMessageService.findAllByParty(partyId, req.user.id);
   }
 }

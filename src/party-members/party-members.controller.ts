@@ -6,12 +6,25 @@ import {
   Delete,
   Param,
   Body,
+  Req,
+  UseGuards,
+  ParseIntPipe,
 } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { PartyMembersService } from './party-members.service';
-import { ApiTags, ApiOperation, ApiBody, ApiParam, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBody,
+  ApiParam,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { UpdatePartyMemberStatusDto } from './dto/party-member.dto';
 
 @ApiTags('Parties')
+@ApiBearerAuth('access-token')
+@UseGuards(AuthGuard('jwt'))
 @Controller('party-members')
 export class PartyMembersController {
   constructor(private readonly partyMembersService: PartyMembersService) {}
@@ -41,8 +54,13 @@ export class PartyMembersController {
       ],
     },
   })
-  findAll(@Param('partyId') partyId: number) {
-    return this.partyMembersService.findAllByParty(partyId);
+  @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
+  @ApiResponse({ status: 403, description: '모임 멤버가 아닌 사용자' })
+  findAll(
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Req() req: { user: { id: number } },
+  ) {
+    return this.partyMembersService.findAllByParty(partyId, req.user.id);
   }
 
   @Post(':partyId/:userId')
@@ -65,8 +83,17 @@ export class PartyMembersController {
       },
     },
   })
-  create(@Param('partyId') partyId: number, @Param('userId') userId: number) {
-    return this.partyMembersService.create(partyId, userId);
+  @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
+  @ApiResponse({
+    status: 403,
+    description: '다른 사용자를 대신한 가입 신청',
+  })
+  create(
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: { user: { id: number } },
+  ) {
+    return this.partyMembersService.create(partyId, userId, req.user.id);
   }
 
   @Patch(':partyId/:userId/status')
@@ -87,15 +114,19 @@ export class PartyMembersController {
       },
     },
   })
+  @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
+  @ApiResponse({ status: 403, description: '방장이 아닌 사용자' })
   updateStatus(
-    @Param('partyId') partyId: number,
-    @Param('userId') userId: number,
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Param('userId', ParseIntPipe) userId: number,
     @Body() updateDto: UpdatePartyMemberStatusDto,
+    @Req() req: { user: { id: number } },
   ) {
     return this.partyMembersService.updateStatus(
       partyId,
       userId,
       updateDto.status,
+      req.user.id,
     );
   }
 
@@ -117,11 +148,18 @@ export class PartyMembersController {
       },
     },
   })
+  @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
+  @ApiResponse({ status: 403, description: '방장이 아닌 사용자' })
   async remove(
-    @Param('partyId') partyId: number,
-    @Param('userId') userId: number,
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @Req() req: { user: { id: number } },
   ) {
-    const result = await this.partyMembersService.remove(partyId, userId);
+    const result = await this.partyMembersService.remove(
+      partyId,
+      userId,
+      req.user.id,
+    );
 
     if (result.affected === 0) {
       return { success: false, message: '해당하는 멤버를 찾을 수 없습니다.' };

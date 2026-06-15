@@ -6,6 +6,7 @@ import { User } from '../users/entities/user.entity';
 import { Party } from '../parties/entities/party.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { toPublicUser } from '../users/user-response.mapper';
 
 @Injectable()
 export class ReviewsService {
@@ -109,7 +110,7 @@ export class ReviewsService {
   }
 
   async findAllByUser(userId: number) {
-    return this.reviewRepository.find({
+    const reviews = await this.reviewRepository.find({
       where: { revieweeId: userId },
       relations: {
         reviewer: true,
@@ -119,6 +120,11 @@ export class ReviewsService {
         createdAt: 'DESC',
       },
     });
+
+    return reviews.map((review) => ({
+      ...review,
+      reviewer: toPublicUser(review.reviewer),
+    }));
   }
 
   async checkReviewStatus(partyId: number, reviewerId: number) {

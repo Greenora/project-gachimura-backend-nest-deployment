@@ -21,29 +21,29 @@ export class User {
   @Column() // 미입력시 랜덤 생성
   nickname: string;
 
-  @Column({ name: 'nickname_jp', nullable: true }) // 일본어 닉네임
-  nickname_jp?: string;
+  @Column({ name: 'nickname_jp', type: 'varchar', nullable: true }) // 일본어 닉네임
+  nickname_jp?: string | null;
 
-  @Column({ name: 'profile_image', nullable: true })
-  profileImage?: string;
+  @Column({ name: 'profile_image', type: 'varchar', nullable: true })
+  profileImage?: string | null;
 
-  @Column({ name: 'phone_number', nullable: true })
-  phoneNumber?: string;
+  @Column({ name: 'phone_number', type: 'varchar', nullable: true })
+  phoneNumber?: string | null;
 
   @Column({ name: 'birth_date', type: 'datetime', nullable: true })
-  birthDate?: Date;
+  birthDate?: Date | null;
 
-  @Column({ name: 'bank_code', nullable: true })
-  bankCode?: string;
+  @Column({ name: 'bank_code', type: 'varchar', nullable: true })
+  bankCode?: string | null;
 
-  @Column({ name: 'bank_name', nullable: true }) // 정산 기능용 (미구현)
-  bankName?: string;
+  @Column({ name: 'bank_name', type: 'varchar', nullable: true }) // 정산 기능용 (미구현)
+  bankName?: string | null;
 
-  @Column({ name: 'account_number', nullable: true }) // 정산 기능용 (미구현)
-  accountNumber?: string;
+  @Column({ name: 'account_number', type: 'varchar', nullable: true }) // 정산 기능용 (미구현)
+  accountNumber?: string | null;
 
-  @Column({ name: 'account_holder', nullable: true })
-  accountHolder?: string;
+  @Column({ name: 'account_holder', type: 'varchar', nullable: true })
+  accountHolder?: string | null;
 
   @Column({
     name: 'refresh_token',
@@ -56,8 +56,8 @@ export class User {
   @Column({ default: 'LOCAL' }) // LOCAL/KAKAO/LINE
   provider: string;
 
-  @Column({ nullable: true }) // 소셜 로그인 고유 ID
-  sns_id?: string;
+  @Column({ type: 'varchar', nullable: true }) // 소셜 로그인 고유 ID
+  sns_id?: string | null;
 
   @Column('decimal', { precision: 4, scale: 1, default: 50.0 }) // 신뢰 지수
   treeScore: number;
@@ -72,14 +72,14 @@ export class User {
   updatedAt: Date;
 
   @Column('decimal', { precision: 10, scale: 8, nullable: true })
-  latitude: number;
+  latitude: number | null;
 
   @Column('decimal', { precision: 11, scale: 8, nullable: true })
-  longitude: number;
+  longitude: number | null;
 
-  @Column({ nullable: true })
-  region: string;
+  @Column({ type: 'varchar', nullable: true })
+  region: string | null;
 
-  @Column({ nullable: true })
-  district: string;
+  @Column({ type: 'varchar', nullable: true })
+  district: string | null;
 }
