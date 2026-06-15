@@ -288,14 +288,21 @@ export class UsersService {
     return this.findOne(id);
   }
 
-  // 유저 위치 정보 업데이트
+  // 유저 위치 및 프로필 정보 업데이트
   async updateLocation(userId: number, data: any) {
     const updateFields: any = {};
 
-    if (data.latitude) updateFields.latitude = data.latitude;
-    if (data.longitude) updateFields.longitude = data.longitude;
-    if (data.region) updateFields.region = data.region;
-    if (data.district) updateFields.district = data.district;
+    if (data.latitude !== undefined) updateFields.latitude = data.latitude;
+    if (data.longitude !== undefined) updateFields.longitude = data.longitude;
+    if (data.region !== undefined) updateFields.region = data.region;
+    if (data.district !== undefined) updateFields.district = data.district;
+    if (data.bankCode !== undefined) updateFields.bankCode = data.bankCode;
+    if (data.bankName !== undefined) updateFields.bankName = data.bankName;
+    if (data.accountNumber !== undefined) updateFields.accountNumber = data.accountNumber;
+    if (data.accountHolder !== undefined) updateFields.accountHolder = data.accountHolder;
+    if (data.nickname !== undefined) updateFields.nickname = data.nickname;
+    if (data.nickname_jp !== undefined) updateFields.nickname_jp = data.nickname_jp;
+
     await this.usersRepository.update(userId, updateFields);
 
     return { success: true };

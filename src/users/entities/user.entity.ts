@@ -33,11 +33,17 @@ export class User {
   @Column({ name: 'birth_date', type: 'datetime', nullable: true })
   birthDate?: Date;
 
+  @Column({ name: 'bank_code', nullable: true })
+  bankCode?: string;
+
   @Column({ name: 'bank_name', nullable: true }) // 정산 기능용 (미구현)
   bankName?: string;
 
   @Column({ name: 'account_number', nullable: true }) // 정산 기능용 (미구현)
   accountNumber?: string;
+
+  @Column({ name: 'account_holder', nullable: true })
+  accountHolder?: string;
 
   @Column({
     name: 'refresh_token',
