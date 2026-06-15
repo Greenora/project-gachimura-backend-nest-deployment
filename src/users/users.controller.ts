@@ -55,6 +55,10 @@ export class UsersController {
       provider: user.provider,
       treeScore: user.treeScore,
       reviewsCount: user.reviewsCount,
+      bankCode: user.bankCode,
+      bankName: user.bankName,
+      accountNumber: user.accountNumber,
+      accountHolder: user.accountHolder,
     };
   }
 
