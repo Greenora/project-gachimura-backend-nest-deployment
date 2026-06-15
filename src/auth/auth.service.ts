@@ -41,7 +41,7 @@ export interface AuthResponse {
   user: {
     email: string;
     nickname: string;
-    nickname_jp?: string; // 일본어 닉네임 필드 추가
+    nickname_jp?: string | null; // 일본어 닉네임 필드 추가
   };
 }
 
@@ -173,6 +173,20 @@ export class AuthService {
     return this.jwtService.sign(payload, {
       expiresIn: expiresIn as any,
     });
+  }
+
+  verifyAccessToken(token: string): JwtPayload {
+    try {
+      const payload = this.jwtService.verify<JwtPayload>(token);
+      if (!payload.sub || !payload.email || !payload.nickname) {
+        throw new UnauthorizedException('유효하지 않은 액세스 토큰입니다.');
+      }
+      return payload;
+    } catch {
+      throw new UnauthorizedException(
+        '액세스 토큰이 만료되었거나 유효하지 않습니다.',
+      );
+    }
   }
 
   // 이메일이 DB에 있는지 체크

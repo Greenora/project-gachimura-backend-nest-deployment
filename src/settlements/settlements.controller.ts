@@ -9,6 +9,7 @@ import {
   Req,
   UploadedFile,
   UseInterceptors,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -16,6 +17,7 @@ import {
   ApiOperation,
   ApiBearerAuth,
   ApiConsumes,
+  ApiResponse,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { SettlementsService } from './settlements.service';
@@ -42,7 +44,10 @@ export class SettlementsController {
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '정산 생성', description: '모임의 정산을 시작합니다 (호스트 전용)' })
+  @ApiOperation({
+    summary: '정산 생성',
+    description: '모임의 정산을 시작합니다 (호스트 전용)',
+  })
   create(@Req() req: AuthenticatedRequest, @Body() dto: CreateSettlementDto) {
     return this.settlementsService.create(req.user.id, dto.partyId);
   }
@@ -50,38 +55,52 @@ export class SettlementsController {
   @Get(':id')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: '정산 상세 조회' })
-  findOne(@Param('id') id: string) {
-    return this.settlementsService.findOne(+id);
+  @ApiResponse({ status: 403, description: '모임 멤버가 아닌 사용자' })
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.settlementsService.findOne(id, req.user.id);
   }
 
   @Get('party/:partyId')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: '파티 ID로 정산 조회' })
-  findByPartyId(@Param('partyId') partyId: string) {
-    return this.settlementsService.findByPartyId(+partyId);
+  @ApiResponse({ status: 403, description: '모임 멤버가 아닌 사용자' })
+  findByPartyId(
+    @Param('partyId', ParseIntPipe) partyId: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.settlementsService.findByPartyId(partyId, req.user.id);
   }
 
   @Patch(':id/items')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '정산 품목 업데이트', description: '호스트가 OCR 결과를 수정하고 저장합니다.' })
+  @ApiOperation({
+    summary: '정산 품목 업데이트',
+    description: '호스트가 OCR 결과를 수정하고 저장합니다.',
+  })
   updateItems(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
     @Body() dto: UpdateSettlementItemsDto,
   ) {
-    return this.settlementsService.updateItems(+id, req.user.id, dto);
+    return this.settlementsService.updateItems(id, req.user.id, dto);
   }
 
   @Patch(':id/start')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '정산 시작하기', description: '멤버들이 품목을 선택할 수 있도록 상태를 변경합니다.' })
+  @ApiOperation({
+    summary: '정산 시작하기',
+    description: '멤버들이 품목을 선택할 수 있도록 상태를 변경합니다.',
+  })
   startSelecting(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
     @Body() body: { resumedFromEdit?: boolean },
   ) {
     return this.settlementsService.startSelecting(
-      +id,
+      id,
       req.user.id,
       body?.resumedFromEdit === true,
     );
@@ -89,45 +108,57 @@ export class SettlementsController {
 
   @Patch(':id/select')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '품목 선택', description: '게스트가 본인이 구매한 품목을 선택합니다.' })
+  @ApiOperation({
+    summary: '품목 선택',
+    description: '게스트가 본인이 구매한 품목을 선택합니다.',
+  })
   selectItems(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
     @Body() dto: SelectItemsDto,
   ) {
-    return this.settlementsService.selectItems(+id, req.user.id, dto);
+    return this.settlementsService.selectItems(id, req.user.id, dto);
   }
 
   @Patch(':id/revert')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '수정하기', description: 'SELECTING 상태를 DRAFT로 되돌려 품목을 수정합니다.' })
+  @ApiOperation({
+    summary: '수정하기',
+    description: 'SELECTING 상태를 DRAFT로 되돌려 품목을 수정합니다.',
+  })
   revertToDraft(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.settlementsService.revertToDraft(+id, req.user.id);
+    return this.settlementsService.revertToDraft(id, req.user.id);
   }
 
   @Patch(':id/confirm')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '정산 확정', description: '호스트가 최종 확정합니다.' })
+  @ApiOperation({
+    summary: '정산 확정',
+    description: '호스트가 최종 확정합니다.',
+  })
   confirm(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.settlementsService.confirm(+id, req.user.id);
+    return this.settlementsService.confirm(id, req.user.id);
   }
 
   @Patch(':id/payment')
   @UseGuards(AuthGuard('jwt'))
-  @ApiOperation({ summary: '입금 확인 처리', description: '호스트가 특정 멤버의 입금을 확인합니다.' })
+  @ApiOperation({
+    summary: '입금 확인 처리',
+    description: '호스트가 특정 멤버의 입금을 확인합니다.',
+  })
   updatePayment(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Req() req: AuthenticatedRequest,
     @Body() dto: UpdatePaymentDto,
   ) {
     return this.settlementsService.updatePayment(
-      +id,
+      id,
       req.user.id,
       dto.userId,
       dto.status,
@@ -137,8 +168,12 @@ export class SettlementsController {
   @Get(':id/payments')
   @UseGuards(AuthGuard('jwt'))
   @ApiOperation({ summary: '입금 현황 조회' })
-  getPayments(@Param('id') id: string) {
-    return this.settlementsService.getPayments(+id);
+  @ApiResponse({ status: 403, description: '모임 멤버가 아닌 사용자' })
+  getPayments(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.settlementsService.getPayments(id, req.user.id);
   }
 
   @Post('upload-receipt')
@@ -160,7 +195,7 @@ export class SettlementsController {
       }),
     }),
   )
-  async uploadReceipt(@UploadedFile() file: any) {
+  async uploadReceipt(@UploadedFile() file?: Express.Multer.File) {
     if (!file) {
       return { message: '파일이 업로드되지 않았습니다.', items: [] };
     }
@@ -170,7 +205,8 @@ export class SettlementsController {
     // OCR 결과가 비어있으면 API 키 미설정 안내
     if (ocrResult.items.length === 0) {
       return {
-        message: 'OCR 결과가 없습니다. CLOVA OCR API 키를 확인하거나 품목을 직접 입력해주세요.',
+        message:
+          'OCR 결과가 없습니다. CLOVA OCR API 키를 확인하거나 품목을 직접 입력해주세요.',
         filename: file.filename,
         storeName: null,
         items: [],

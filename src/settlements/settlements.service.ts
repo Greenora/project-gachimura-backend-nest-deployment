@@ -15,6 +15,7 @@ import { PartyMember } from '../party-members/entities/party-member.entity';
 import { ChatGateway } from '../chat/chat.gateway';
 import { UpdateSettlementItemsDto } from './dto/update-settlement-items.dto';
 import { SelectItemsDto } from './dto/select-items.dto';
+import { toPublicUser } from '../users/user-response.mapper';
 
 @Injectable()
 export class SettlementsService {
@@ -34,6 +35,49 @@ export class SettlementsService {
     private dataSource: DataSource,
     private chatGateway: ChatGateway,
   ) {}
+
+  private toPublicSettlement(settlement: Settlement) {
+    return {
+      ...settlement,
+      host: toPublicUser(settlement.host),
+      items: settlement.items?.map((item) => ({
+        ...item,
+        members: item.members?.map((member) => ({
+          ...member,
+          user: toPublicUser(member.user),
+        })),
+      })),
+    };
+  }
+
+  private async ensurePartyAccess(partyId: number, userId: number) {
+    const party = await this.partyRepository.findOne({
+      where: { id: partyId },
+    });
+    if (!party) {
+      throw new NotFoundException('모임을 찾을 수 없습니다.');
+    }
+    if (party.hostId === userId) {
+      return;
+    }
+
+    const member = await this.memberRepository.findOne({
+      where: { partyId, userId, status: 'APPROVED' },
+    });
+    if (!member) {
+      throw new ForbiddenException('이 모임의 정산을 조회할 권한이 없습니다.');
+    }
+  }
+
+  private async ensureSettlementAccess(settlementId: number, userId: number) {
+    const settlement = await this.settlementRepository.findOne({
+      where: { id: settlementId },
+    });
+    if (!settlement) {
+      throw new NotFoundException('정산을 찾을 수 없습니다.');
+    }
+    await this.ensurePartyAccess(settlement.partyId, userId);
+  }
 
   // 정산 생성 (호스트 전용)
   async create(hostId: number, partyId: number) {
@@ -64,7 +108,9 @@ export class SettlementsService {
   }
 
   // 정산 상세 조회
-  async findOne(settlementId: number) {
+  async findOne(settlementId: number, userId: number) {
+    await this.ensureSettlementAccess(settlementId, userId);
+
     const settlement = await this.settlementRepository.findOne({
       where: { id: settlementId },
       relations: [
@@ -78,11 +124,13 @@ export class SettlementsService {
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
     }
-    return settlement;
+    return this.toPublicSettlement(settlement);
   }
 
   // 파티 ID로 정산 조회
-  async findByPartyId(partyId: number) {
+  async findByPartyId(partyId: number, userId: number) {
+    await this.ensurePartyAccess(partyId, userId);
+
     const settlement = await this.settlementRepository.findOne({
       where: { partyId },
       relations: [
@@ -94,7 +142,7 @@ export class SettlementsService {
       ],
       order: { createdAt: 'DESC' },
     });
-    return settlement;
+    return settlement ? this.toPublicSettlement(settlement) : null;
   }
 
   // 품목 업데이트 (호스트가 OCR 결과 수정 후 저장)
@@ -146,7 +194,7 @@ export class SettlementsService {
 
       await queryRunner.commitTransaction();
 
-      return this.findOne(settlementId);
+      return this.findOne(settlementId, hostId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -193,7 +241,7 @@ export class SettlementsService {
       );
     }
 
-    return this.findOne(settlementId);
+    return this.findOne(settlementId, hostId);
   }
 
   // 호스트: SELECTING → DRAFT 되돌리기 (품목 수정 가능)
@@ -229,7 +277,7 @@ export class SettlementsService {
       );
     }
 
-    return this.findOne(settlementId);
+    return this.findOne(settlementId, hostId);
   }
 
   // 게스트: 본인 참여 항목 선택
@@ -291,7 +339,7 @@ export class SettlementsService {
       }
 
       await queryRunner.commitTransaction();
-      return this.findOne(settlementId);
+      return this.findOne(settlementId, userId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -368,7 +416,7 @@ export class SettlementsService {
         `__SYS__|SETTLEMENT_CONFIRMED|${settlement.totalAmount}|${detailParts}`,
       );
 
-      return this.findOne(settlementId);
+      return this.findOne(settlementId, hostId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -428,14 +476,24 @@ export class SettlementsService {
       }
     }
 
-    return payment;
+    return {
+      ...payment,
+      user: toPublicUser(payment.user),
+    };
   }
 
   // 정산 결제 현황 조회
-  async getPayments(settlementId: number) {
-    return this.paymentRepository.find({
+  async getPayments(settlementId: number, userId: number) {
+    await this.ensureSettlementAccess(settlementId, userId);
+
+    const payments = await this.paymentRepository.find({
       where: { settlementId },
       relations: ['user'],
     });
+
+    return payments.map((payment) => ({
+      ...payment,
+      user: toPublicUser(payment.user),
+    }));
   }
 }

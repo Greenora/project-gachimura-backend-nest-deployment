@@ -9,6 +9,7 @@ import { Party } from './entities/party.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
+import { toPublicUser } from '../users/user-response.mapper';
 
 @Injectable()
 export class PartiesService {
@@ -19,6 +20,12 @@ export class PartiesService {
     private partyMemberRepository: Repository<PartyMember>,
   ) {}
 
+  private toPublicParty(party: Party) {
+    return {
+      ...party,
+      host: toPublicUser(party.host),
+    };
+  }
 
   // 모임 생성 (파일 업로드 포함)
   async createWithFile(dto: CreatePartyDto, file?: any, hostId?: number) {
@@ -84,7 +91,7 @@ export class PartiesService {
 
 
   // 모임 목록 조회 (검색/정렬/모집중 필터)
-  findAll(
+  async findAll(
     search?: string,
     sort: string = 'latest',
     showCompleted: boolean = true,
@@ -119,13 +126,15 @@ export class PartiesService {
       order['createdAt'] = 'DESC'; // 최신 등록순
     }
 
-    return this.partyRepository.find({
+    const parties = await this.partyRepository.find({
       where,
       relations: {
         host: true,
       },
       order,
     });
+
+    return parties.map((party) => this.toPublicParty(party));
   }
 
 
@@ -200,8 +209,8 @@ export class PartiesService {
     return this.partyRepository.update(id, updatePartyDto);
   }
 
-  findAllByUser(userId: number) {
-    return this.partyRepository.find({
+  async findAllByUser(userId: number) {
+    const parties = await this.partyRepository.find({
       where: { hostId: userId },
       relations: {
         host: true,
@@ -210,6 +219,8 @@ export class PartiesService {
         createdAt: 'DESC',
       },
     });
+
+    return parties.map((party) => this.toPublicParty(party));
   }
 
   remove(id: number) {
@@ -222,7 +233,9 @@ export class PartiesService {
       relations: ['party', 'party.host'],
       order: { party: { meetDate: 'DESC' } },
     });
-    return memberships.map((m) => m.party);
+    return memberships.map((membership) =>
+      this.toPublicParty(membership.party),
+    );
   }
 
   async joinParty(partyId: number, userId: number) {
