@@ -3,7 +3,9 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt'; // 비밀번호 암호화 라이브러리
@@ -27,13 +29,18 @@ interface KakaoUserResponse {
   };
 }
 
+interface KakaoTokenResponse {
+  access_token: string;
+}
+
 // 유저 비즈니스 로직 처리 (회원가입, 소셜 로그인, 토큰 관리)
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
-  ) { }
+    private readonly configService: ConfigService,
+  ) {}
 
   // 랜덤 닉네임 생성 (한/일 동시)
   private generateRandomNicknamePair(): { ko: string; jp: string } {
@@ -93,13 +100,52 @@ export class UsersService {
     }
   }
 
-  // 카카오 로그인 (신규면 자동 가입, 기존 이메일 있으면 계정 연동)
+  // 카카오 로그인 (인가 코드 → 토큰 교환 → 신규면 자동 가입)
   async kakaoLogin(
-    kakaoAccessToken: string,
-    language: string = 'ko',
+    code: string,
+    redirectUri: string,
+    _language: string = 'ko',
   ): Promise<KakaoLoginResponse> {
+    const clientId = this.configService.get<string>('KAKAO_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('KAKAO_CLIENT_SECRET');
+
+    if (!clientId) {
+      throw new InternalServerErrorException(
+        '카카오 클라이언트 ID가 설정되지 않았습니다.',
+      );
+    }
+
+    const tokenParams = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      code,
+    });
+
+    if (clientSecret) {
+      tokenParams.set('client_secret', clientSecret);
+    }
+
+    let kakaoAccessToken: string;
+    try {
+      const tokenResponse = await axios.post<KakaoTokenResponse>(
+        'https://kauth.kakao.com/oauth/token',
+        tokenParams.toString(),
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
+          },
+        },
+      );
+      kakaoAccessToken = tokenResponse.data.access_token;
+    } catch {
+      throw new BadRequestException(
+        '유효하지 않거나 만료된 카카오 인가 코드입니다.',
+      );
+    }
+
     let kakaoUser: KakaoUserResponse;
-    
+
     try {
       const response = await axios.get<KakaoUserResponse>(
         'https://kapi.kakao.com/v2/user/me',
@@ -109,7 +155,7 @@ export class UsersService {
       );
       kakaoUser = response.data;
     } catch {
-      throw new InternalServerErrorException('카카오 인증 실패');
+      throw new UnauthorizedException('카카오 사용자 인증에 실패했습니다.');
     }
 
     const snsId = kakaoUser.id.toString();
@@ -170,17 +216,22 @@ export class UsersService {
       const accessToken = tokenResponse.data.access_token;
 
       // 2단계: 액세스 토큰으로 유저 프로필 가져오기
-      const profileResponse = await axios.get('https://api.line.me/v2/profile', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const profileResponse = await axios.get(
+        'https://api.line.me/v2/profile',
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
 
       const lineUser = profileResponse.data;
       const snsId = lineUser.userId;
-      
+
       const email = `${snsId}@line.me`;
 
       // 3단계: DB에서 유저 찾기 또는 신규 가입
-      let user = await this.usersRepository.findOne({ where: { sns_id: snsId } });
+      let user = await this.usersRepository.findOne({
+        where: { sns_id: snsId },
+      });
 
       if (!user) {
         const randomNickPair = this.generateRandomNicknamePair();
@@ -197,10 +248,11 @@ export class UsersService {
       }
 
       return { user };
-
     } catch (error) {
       console.error('Line Login Error:', error.response?.data || error.message);
-      throw new InternalServerErrorException('라인 로그인 처리 중 오류가 발생했습니다.');
+      throw new InternalServerErrorException(
+        '라인 로그인 처리 중 오류가 발생했습니다.',
+      );
     }
   }
 
@@ -219,7 +271,7 @@ export class UsersService {
   ): Promise<void> {
     const salt = await bcrypt.genSalt();
     const hashedRefreshToken = await bcrypt.hash(refreshToken, salt);
-    
+
     await this.usersRepository.update(userId, {
       refreshToken: hashedRefreshToken,
     });
@@ -230,7 +282,7 @@ export class UsersService {
     await this.usersRepository.update(userId, { refreshToken: null });
   }
 
-  // 유저 정보 수정 
+  // 유저 정보 수정
   async update(id: number, updateData: Partial<User>): Promise<User | null> {
     await this.usersRepository.update(id, updateData);
     return this.findOne(id);
@@ -239,14 +291,13 @@ export class UsersService {
   // 유저 위치 정보 업데이트
   async updateLocation(userId: number, data: any) {
     const updateFields: any = {};
-    
+
     if (data.latitude) updateFields.latitude = data.latitude;
     if (data.longitude) updateFields.longitude = data.longitude;
-    if (data.region) updateFields.region = data.region;     
+    if (data.region) updateFields.region = data.region;
     if (data.district) updateFields.district = data.district;
     await this.usersRepository.update(userId, updateFields);
-    
+
     return { success: true };
   }
-
 }

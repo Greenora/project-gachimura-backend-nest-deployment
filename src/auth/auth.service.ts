@@ -73,7 +73,10 @@ export class AuthService {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
-  private async sendVerificationMail(email: string, code: string): Promise<void> {
+  private async sendVerificationMail(
+    email: string,
+    code: string,
+  ): Promise<void> {
     const host = this.configService.get<string>('SMTP_HOST');
     const port = Number(this.configService.get<string>('SMTP_PORT') || 587);
     const user = this.configService.get<string>('SMTP_USER');
@@ -123,22 +126,29 @@ export class AuthService {
 
   private validateSignupVerificationToken(token: string, email: string): void {
     try {
-      const payload = this.jwtService.verify<{ email: string; purpose: string }>(
-        token,
-      );
+      const payload = this.jwtService.verify<{
+        email: string;
+        purpose: string;
+      }>(token);
 
       if (payload.purpose !== 'signup-email-verified') {
-        throw new BadRequestException('이메일 인증 토큰의 용도가 올바르지 않습니다.');
+        throw new BadRequestException(
+          '이메일 인증 토큰의 용도가 올바르지 않습니다.',
+        );
       }
 
       if (payload.email !== email) {
-        throw new BadRequestException('이메일 인증 토큰의 이메일이 일치하지 않습니다.');
+        throw new BadRequestException(
+          '이메일 인증 토큰의 이메일이 일치하지 않습니다.',
+        );
       }
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;
       }
-      throw new UnauthorizedException('이메일 인증 토큰이 유효하지 않거나 만료되었습니다.');
+      throw new UnauthorizedException(
+        '이메일 인증 토큰이 유효하지 않거나 만료되었습니다.',
+      );
     }
   }
 
@@ -244,11 +254,15 @@ export class AuthService {
     }
 
     if (verification.verifiedAt) {
-      throw new BadRequestException('이미 인증된 코드입니다. 새 코드를 요청해주세요.');
+      throw new BadRequestException(
+        '이미 인증된 코드입니다. 새 코드를 요청해주세요.',
+      );
     }
 
     if (verification.expiresAt.getTime() < now.getTime()) {
-      throw new BadRequestException('인증 코드가 만료되었습니다. 다시 요청해주세요.');
+      throw new BadRequestException(
+        '인증 코드가 만료되었습니다. 다시 요청해주세요.',
+      );
     }
 
     if (verification.attemptCount >= this.verificationCodeMaxAttempts) {
@@ -335,11 +349,13 @@ export class AuthService {
   // 카카오 소셜 로그인 처리
   // 신규 유저면 자동으로 회원가입됨
   async loginWithKakao(
-    kakaoAccessToken: string,
+    code: string,
+    redirectUri: string,
     language?: string, // 닉네임 생성할 때 한글/일본어 선택용
   ): Promise<AuthResponse> {
     const result = await this.usersService.kakaoLogin(
-      kakaoAccessToken,
+      code,
+      redirectUri,
       language,
     );
     const user = result.user;
