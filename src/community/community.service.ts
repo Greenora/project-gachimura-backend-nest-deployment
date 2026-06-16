@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CommunityPost } from './entities/community-post.entity';
@@ -11,6 +15,7 @@ import {
   CommunityLocale,
   DEFAULT_COMMUNITY_LOCALE,
 } from './community-locale.constants';
+import { Party } from '../parties/entities/party.entity';
 
 interface CursorPayload {
   createdAt: Date;
@@ -26,6 +31,8 @@ export class CommunityService {
     private readonly communityPostLikeRepository: Repository<CommunityPostLike>,
     @InjectRepository(CommunityComment)
     private readonly communityCommentRepository: Repository<CommunityComment>,
+    @InjectRepository(Party)
+    private readonly partyRepository: Repository<Party>,
   ) {}
 
   private mapPost(
@@ -42,6 +49,14 @@ export class CommunityService {
       likeCount,
       commentCount,
       likedByMe,
+      linkedParty: post.linkedParty
+        ? {
+            id: post.linkedParty.id,
+            title: post.linkedParty.title,
+            storeName: post.linkedParty.storeName,
+            status: post.linkedParty.status,
+          }
+        : null,
       author: {
         id: post.author?.id,
         nickname: post.author?.nickname,
@@ -113,6 +128,7 @@ export class CommunityService {
     const qb = this.communityPostRepository
       .createQueryBuilder('post')
       .leftJoinAndSelect('post.author', 'author')
+      .leftJoinAndSelect('post.linkedParty', 'linkedParty')
       .where('post.locale = :locale', { locale: normalizedLocale });
 
     // 정렬 방식에 따라 서브쿼리 추가
@@ -270,8 +286,19 @@ export class CommunityService {
   }
 
   async create(authorId: number, dto: CreateCommunityPostDto) {
+    if (dto.linkedPartyId) {
+      const party = await this.partyRepository.findOne({
+        where: { id: dto.linkedPartyId },
+      });
+
+      if (!party || party.hostId !== authorId) {
+        throw new BadRequestException('본인이 만든 모임만 연결할 수 있습니다.');
+      }
+    }
+
     const post = this.communityPostRepository.create({
       authorId,
+      linkedPartyId: dto.linkedPartyId ?? null,
       content: dto.content,
       locale: this.normalizeLocale(dto.locale),
     });
@@ -280,7 +307,7 @@ export class CommunityService {
 
     const created = await this.communityPostRepository.findOne({
       where: { id: saved.id },
-      relations: { author: true },
+      relations: { author: true, linkedParty: true },
     });
 
     if (!created) {

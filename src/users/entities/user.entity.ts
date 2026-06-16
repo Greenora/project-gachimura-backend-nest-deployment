@@ -36,8 +36,25 @@ export class User {
   @Column({ name: 'bank_code', type: 'varchar', nullable: true })
   bankCode?: string | null;
 
+  @Column({
+    name: 'account_country',
+    type: 'varchar',
+    length: 2,
+    nullable: true,
+  })
+  accountCountry?: string | null;
+
   @Column({ name: 'bank_name', type: 'varchar', nullable: true }) // 정산 기능용 (미구현)
   bankName?: string | null;
+
+  @Column({ name: 'bank_branch_name', type: 'varchar', nullable: true })
+  bankBranchName?: string | null;
+
+  @Column({ name: 'bank_branch_code', type: 'varchar', nullable: true })
+  bankBranchCode?: string | null;
+
+  @Column({ name: 'account_type', type: 'varchar', nullable: true })
+  accountType?: string | null;
 
   @Column({ name: 'account_number', type: 'varchar', nullable: true }) // 정산 기능용 (미구현)
   accountNumber?: string | null;
