@@ -96,4 +96,77 @@ describe('SettlementsService', () => {
       'refreshToken',
     );
   });
+
+  it('정산 hostId가 파티 hostId와 달라도 현재 파티 호스트의 품목 수정을 허용하고 보정한다', async () => {
+    const updateSettlement = jest.fn().mockResolvedValue({ affected: 1 });
+    const settlementRepository = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 8,
+          partyId: 9,
+          hostId: 1,
+          status: 'DRAFT',
+        })
+        .mockResolvedValueOnce({
+          id: 8,
+          partyId: 9,
+          hostId: 2,
+        })
+        .mockResolvedValueOnce({
+          id: 8,
+          partyId: 9,
+          hostId: 2,
+          host: { id: 2, nickname: '현재 호스트' },
+          items: [],
+        }),
+      update: updateSettlement,
+    } as unknown as Repository<Settlement>;
+    const itemRepository = {
+      create: jest.fn((item) => item),
+    } as unknown as Repository<SettlementItem>;
+    const partyRepository = {
+      findOne: jest
+        .fn()
+        .mockResolvedValueOnce({ id: 9, hostId: 2 })
+        .mockResolvedValueOnce({ id: 9, hostId: 2 }),
+    } as unknown as Repository<Party>;
+    const queryRunner = {
+      connect: jest.fn(),
+      startTransaction: jest.fn(),
+      commitTransaction: jest.fn(),
+      rollbackTransaction: jest.fn(),
+      release: jest.fn(),
+      manager: {
+        delete: jest.fn(),
+        save: jest.fn(),
+        update: jest.fn(),
+      },
+    };
+    const dataSource = {
+      createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+    } as unknown as DataSource;
+    const service = new SettlementsService(
+      settlementRepository,
+      itemRepository,
+      {} as Repository<SettlementItemMember>,
+      {} as Repository<SettlementPayment>,
+      partyRepository,
+      {} as Repository<PartyMember>,
+      dataSource,
+      {} as ChatGateway,
+    );
+
+    await service.updateItems(8, 2, {
+      items: [{ name: '우유', price: 1000, quantity: 1 }],
+    });
+
+    expect(updateSettlement).toHaveBeenCalledWith(8, { hostId: 2 });
+    expect(queryRunner.manager.save).toHaveBeenCalledWith({
+      settlementId: 8,
+      name: '우유',
+      price: 1000,
+      quantity: 1,
+    });
+  });
 });

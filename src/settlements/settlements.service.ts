@@ -79,6 +79,29 @@ export class SettlementsService {
     await this.ensurePartyAccess(settlement.partyId, userId);
   }
 
+  private async ensureSettlementHost(
+    settlement: Settlement,
+    userId: number,
+    message: string,
+  ) {
+    const party = await this.partyRepository.findOne({
+      where: { id: settlement.partyId },
+    });
+    if (!party) {
+      throw new NotFoundException('모임을 찾을 수 없습니다.');
+    }
+    if (party.hostId !== userId) {
+      throw new ForbiddenException(message);
+    }
+
+    if (settlement.hostId !== party.hostId) {
+      await this.settlementRepository.update(settlement.id, {
+        hostId: party.hostId,
+      });
+      settlement.hostId = party.hostId;
+    }
+  }
+
   // 정산 생성 (호스트 전용)
   async create(hostId: number, partyId: number) {
     const party = await this.partyRepository.findOne({
@@ -157,9 +180,11 @@ export class SettlementsService {
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
     }
-    if (settlement.hostId !== hostId) {
-      throw new ForbiddenException('호스트만 품목을 수정할 수 있습니다.');
-    }
+    await this.ensureSettlementHost(
+      settlement,
+      hostId,
+      '호스트만 품목을 수정할 수 있습니다.',
+    );
     if (settlement.status !== 'DRAFT') {
       throw new BadRequestException('수정 가능한 상태가 아닙니다.');
     }
@@ -216,9 +241,11 @@ export class SettlementsService {
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
     }
-    if (settlement.hostId !== hostId) {
-      throw new ForbiddenException('호스트만 정산을 시작할 수 있습니다.');
-    }
+    await this.ensureSettlementHost(
+      settlement,
+      hostId,
+      '호스트만 정산을 시작할 수 있습니다.',
+    );
     if (settlement.status !== 'DRAFT' && settlement.status !== 'SELECTING') {
       throw new BadRequestException('이미 시작된 정산입니다.');
     }
@@ -253,9 +280,11 @@ export class SettlementsService {
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
     }
-    if (settlement.hostId !== hostId) {
-      throw new ForbiddenException('호스트만 수정할 수 있습니다.');
-    }
+    await this.ensureSettlementHost(
+      settlement,
+      hostId,
+      '호스트만 수정할 수 있습니다.',
+    );
     if (settlement.status !== 'SELECTING' && settlement.status !== 'DRAFT') {
       throw new BadRequestException('수정 가능한 상태가 아닙니다.');
     }
@@ -357,9 +386,11 @@ export class SettlementsService {
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
     }
-    if (settlement.hostId !== hostId) {
-      throw new ForbiddenException('호스트만 정산을 확정할 수 있습니다.');
-    }
+    await this.ensureSettlementHost(
+      settlement,
+      hostId,
+      '호스트만 정산을 확정할 수 있습니다.',
+    );
     if (settlement.status !== 'SELECTING') {
       throw new BadRequestException('확정 가능한 상태가 아닙니다.');
     }
@@ -438,9 +469,11 @@ export class SettlementsService {
     if (!settlement) {
       throw new NotFoundException('정산을 찾을 수 없습니다.');
     }
-    if (settlement.hostId !== hostId) {
-      throw new ForbiddenException('호스트만 입금 확인을 할 수 있습니다.');
-    }
+    await this.ensureSettlementHost(
+      settlement,
+      hostId,
+      '호스트만 입금 확인을 할 수 있습니다.',
+    );
 
     const payment = await this.paymentRepository.findOne({
       where: { settlementId, userId },
