@@ -8,6 +8,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { Party } from '../../parties/entities/party.entity';
 import { DEFAULT_COMMUNITY_LOCALE } from '../community-locale.constants';
 import type { CommunityLocale } from '../community-locale.constants';
 
@@ -18,6 +19,9 @@ export class CommunityPost {
 
   @Column({ name: 'author_id' })
   authorId: number;
+
+  @Column({ name: 'linked_party_id', type: 'int', nullable: true })
+  linkedPartyId?: number | null;
 
   @Column({ type: 'text' })
   content: string;
@@ -34,4 +38,8 @@ export class CommunityPost {
   @ManyToOne(() => User)
   @JoinColumn({ name: 'author_id' })
   author: User;
+
+  @ManyToOne(() => Party, { nullable: true })
+  @JoinColumn({ name: 'linked_party_id' })
+  linkedParty?: Party | null;
 }

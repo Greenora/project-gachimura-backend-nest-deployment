@@ -297,8 +297,16 @@ export class UsersService {
     if (data.longitude !== undefined) updateFields.longitude = data.longitude;
     if (data.region !== undefined) updateFields.region = data.region;
     if (data.district !== undefined) updateFields.district = data.district;
+    if (data.accountCountry !== undefined)
+      updateFields.accountCountry = data.accountCountry;
     if (data.bankCode !== undefined) updateFields.bankCode = data.bankCode;
     if (data.bankName !== undefined) updateFields.bankName = data.bankName;
+    if (data.bankBranchName !== undefined)
+      updateFields.bankBranchName = data.bankBranchName;
+    if (data.bankBranchCode !== undefined)
+      updateFields.bankBranchCode = data.bankBranchCode;
+    if (data.accountType !== undefined)
+      updateFields.accountType = data.accountType;
     if (data.accountNumber !== undefined)
       updateFields.accountNumber = data.accountNumber;
     if (data.accountHolder !== undefined)

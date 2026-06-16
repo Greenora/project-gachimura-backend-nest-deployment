@@ -1,10 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { COMMUNITY_LOCALES } from '../community-locale.constants';
 import type { CommunityLocale } from '../community-locale.constants';
@@ -29,4 +32,15 @@ export class CreateCommunityPostDto {
   @IsOptional()
   @IsIn(COMMUNITY_LOCALES)
   locale?: CommunityLocale;
+
+  @ApiProperty({
+    description: '게시글에 연결할 작성자 본인의 모임 ID',
+    example: 12,
+    required: false,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  linkedPartyId?: number | null;
 }

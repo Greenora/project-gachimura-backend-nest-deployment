@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsOptional,
@@ -39,11 +40,33 @@ export class UpdateProfileDto {
   @MaxLength(20)
   bankCode?: string | null;
 
+  @ApiPropertyOptional({ example: 'KR', enum: ['KR', 'JP'] })
+  @IsOptional()
+  @IsIn(['KR', 'JP'])
+  accountCountry?: 'KR' | 'JP' | null;
+
   @ApiPropertyOptional({ example: '신한은행' })
   @IsOptional()
   @IsString()
   @MaxLength(50)
   bankName?: string | null;
+
+  @ApiPropertyOptional({ example: '新宿支店' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  bankBranchName?: string | null;
+
+  @ApiPropertyOptional({ example: '123' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  bankBranchCode?: string | null;
+
+  @ApiPropertyOptional({ example: 'FUTSU', enum: ['FUTSU', 'TOZA'] })
+  @IsOptional()
+  @IsIn(['FUTSU', 'TOZA'])
+  accountType?: 'FUTSU' | 'TOZA' | null;
 
   @ApiPropertyOptional({ example: '110123456789' })
   @IsOptional()
