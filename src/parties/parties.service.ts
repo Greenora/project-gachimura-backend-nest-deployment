@@ -233,9 +233,9 @@ export class PartiesService {
       relations: ['party', 'party.host'],
       order: { party: { meetDate: 'DESC' } },
     });
-    return memberships.map((membership) =>
-      this.toPublicParty(membership.party),
-    );
+    return memberships
+      .filter((membership) => Boolean(membership.party))
+      .map((membership) => this.toPublicParty(membership.party));
   }
 
   async joinParty(partyId: number, userId: number) {

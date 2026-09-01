@@ -315,7 +315,9 @@ export class UsersService {
     if (data.nickname_jp !== undefined)
       updateFields.nickname_jp = data.nickname_jp;
 
-    await this.usersRepository.update(userId, updateFields);
+    if (Object.keys(updateFields).length > 0) {
+      await this.usersRepository.update(userId, updateFields);
+    }
 
     return { success: true };
   }

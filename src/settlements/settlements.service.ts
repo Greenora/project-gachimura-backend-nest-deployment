@@ -348,14 +348,11 @@ export class SettlementsService {
     try {
       // 기존 선택 삭제
       const existingSelections = await this.itemMemberRepository.find({
-        where: { userId },
+        where: { userId, item: { settlementId } },
         relations: ['item'],
       });
-      const mySelections = existingSelections.filter(
-        (s) => s.item.settlementId === settlementId,
-      );
-      if (mySelections.length > 0) {
-        await queryRunner.manager.remove(mySelections);
+      if (existingSelections.length > 0) {
+        await queryRunner.manager.remove(existingSelections);
       }
 
       // 새로운 선택 저장
