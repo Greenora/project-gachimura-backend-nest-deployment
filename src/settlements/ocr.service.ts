@@ -1,10 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
-import FormData from 'form-data';
+import { ImageAnnotatorClient, protos } from '@google-cloud/vision';
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
+import { parseReceiptText } from './receipt-parser';
 
 export interface OcrItem {
   name: string;
@@ -18,187 +17,198 @@ export interface OcrResult {
   totalPrice: number | null;
 }
 
-interface OcrTextField {
-  text?: string;
-  formatted?: {
-    value?: string;
-  };
+interface GoogleServiceAccountCredentials {
+  project_id: string;
+  client_email: string;
+  private_key: string;
 }
 
-interface OcrPriceField {
-  price?: OcrTextField;
-  unitPrice?: OcrTextField;
+interface VisualWord {
+  text: string;
+  x: number;
+  centerY: number;
+  height: number;
 }
 
-interface OcrItemField {
-  name?: OcrTextField;
-  count?: OcrTextField;
-  price?: OcrPriceField;
-}
-
-interface OcrReceiptResult {
-  storeInfo?: {
-    name?: OcrTextField;
-  };
-  totalPrice?: {
-    price?: OcrTextField;
-  };
-  subResults?: Array<{
-    items?: OcrItemField[];
-  }>;
-}
-
-interface OcrResponseBody {
-  images?: Array<{
-    receipt?: {
-      result?: OcrReceiptResult;
-    };
-  }>;
+interface VisualLine {
+  centerY: number;
+  height: number;
+  words: VisualWord[];
 }
 
 @Injectable()
 export class OcrService {
   private readonly logger = new Logger(OcrService.name);
+  private visionClient: ImageAnnotatorClient | null = null;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {}
 
   /**
-   * Naver CLOVA OCR 영수증 특화 모델 호출
+   * Google Cloud Vision 문서 텍스트 인식 호출 후 영수증 텍스트를 구조화한다.
    */
   async parseReceipt(filePath: string): Promise<OcrResult> {
-    const secretKey = this.configService.get<string>('CLOVA_OCR_SECRET');
-    const invokeUrl = this.configService.get<string>('CLOVA_OCR_INVOKE_URL');
-
-    if (!secretKey || !invokeUrl || secretKey.startsWith('여기에')) {
-      this.logger.warn(
-        'CLOVA OCR API 키가 설정되지 않았습니다. .env 파일에 CLOVA_OCR_SECRET, CLOVA_OCR_INVOKE_URL을 설정해주세요.',
-      );
-      return { storeName: null, items: [], totalPrice: null };
+    const client = this.getVisionClient();
+    if (!client) {
+      return this.emptyResult();
     }
 
     const absolutePath = path.resolve(filePath);
-    const imageData = fs.readFileSync(absolutePath);
-
-    const ext = path.extname(filePath).toLowerCase().replace('.', '');
-    const format = ['jpg', 'jpeg'].includes(ext) ? 'jpg' : ext;
-
-    const requestMessage = {
-      version: 'V2',
-      requestId: randomUUID(),
-      timestamp: Date.now(),
-      images: [
-        {
-          format,
-          name: 'receipt',
-        },
-      ],
-    };
-
-    const apiUrl = invokeUrl;
-
-    const formData = new FormData();
-    formData.append('message', JSON.stringify(requestMessage));
-    formData.append('file', fs.createReadStream(absolutePath));
-
-    this.logger.log(
-      `OCR 요청 준비: format=${format}, bytes=${imageData.length}, requestId=${requestMessage.requestId}, url=${apiUrl}`,
-    );
 
     try {
-      const response = await axios.post(apiUrl, formData, {
-        headers: {
-          'X-OCR-SECRET': secretKey,
-          ...formData.getHeaders(),
-        },
-        timeout: 30000,
+      const [response] = await client.documentTextDetection({
+        image: { content: fs.readFileSync(absolutePath) },
+        imageContext: { languageHints: ['ko', 'en'] },
       });
 
-      return this.parseOcrResponse(response.data as OcrResponseBody);
-    } catch (error: unknown) {
-      const axiosError = error as {
-        message?: string;
-        response?: { status?: number; data?: unknown };
-      };
-      const status = axiosError.response?.status;
-      const data = axiosError.response?.data;
-      this.logger.error(
-        `CLOVA OCR API 호출 실패: ${axiosError.message || 'unknown error'} (status=${status})`,
-        data,
+      const annotation = response.fullTextAnnotation;
+      const fullText = annotation?.text?.trim() ?? '';
+      if (!fullText) {
+        this.logger.warn('Google Vision 응답에 인식된 텍스트가 없습니다.');
+        return this.emptyResult();
+      }
+
+      const visualLines = annotation
+        ? this.extractVisualLines(annotation)
+        : undefined;
+      const result = parseReceiptText(fullText, visualLines);
+      this.logger.log(
+        `OCR 파싱 완료: ${result.storeName ?? '상호명 없음'}, ${result.items.length}개 품목, 총 ${result.totalPrice ?? 0}원`,
       );
-      return { storeName: null, items: [], totalPrice: null };
+      return result;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.error(`Google Vision OCR 호출 실패: ${message}`);
+      return this.emptyResult();
     }
   }
 
-  /**
-   * CLOVA OCR 영수증 특화 모델 응답 파싱
-   * 응답 구조: images[0].receipt.result
-   */
-  private parseOcrResponse(data: OcrResponseBody): OcrResult {
-    const result: OcrResult = {
-      storeName: null,
-      items: [],
-      totalPrice: null,
-    };
+  private getVisionClient(): ImageAnnotatorClient | null {
+    if (this.visionClient) {
+      return this.visionClient;
+    }
 
-    try {
-      const receiptResult = data?.images?.[0]?.receipt?.result;
-      if (!receiptResult) {
-        this.logger.warn('OCR 응답에 영수증 데이터가 없습니다.');
-        return result;
-      }
+    const encodedCredentials = this.configService.get<string>(
+      'GOOGLE_VISION_CREDENTIALS_BASE64',
+    );
 
-      // 가게명
-      result.storeName =
-        receiptResult.storeInfo?.name?.formatted?.value ||
-        receiptResult.storeInfo?.name?.text ||
-        null;
+    if (encodedCredentials) {
+      try {
+        const credentials = JSON.parse(
+          Buffer.from(encodedCredentials.trim(), 'base64').toString('utf8'),
+        ) as GoogleServiceAccountCredentials;
 
-      // 총 금액
-      const totalText =
-        receiptResult.totalPrice?.price?.formatted?.value ||
-        receiptResult.totalPrice?.price?.text;
-      if (totalText) {
-        result.totalPrice = parseInt(
-          String(totalText).replace(/[,\s원]/g, ''),
-          10,
+        if (
+          !credentials.project_id ||
+          !credentials.client_email ||
+          !credentials.private_key
+        ) {
+          throw new Error('서비스 계정 필수 필드가 없습니다.');
+        }
+
+        this.visionClient = new ImageAnnotatorClient({
+          projectId: credentials.project_id,
+          credentials: {
+            client_email: credentials.client_email,
+            private_key: credentials.private_key,
+          },
+        });
+        return this.visionClient;
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
+        this.logger.error(
+          `GOOGLE_VISION_CREDENTIALS_BASE64 해석 실패: ${message}`,
         );
+        return null;
       }
+    }
 
-      // 품목 리스트
-      const subResults = receiptResult.subResults || [];
-      for (const sub of subResults) {
-        const items = sub.items || [];
-        for (const item of items) {
-          const name =
-            item.name?.formatted?.value || item.name?.text || '알 수 없는 품목';
+    if (this.configService.get<string>('GOOGLE_APPLICATION_CREDENTIALS')) {
+      this.visionClient = new ImageAnnotatorClient();
+      return this.visionClient;
+    }
 
-          const priceText =
-            item.price?.price?.formatted?.value ||
-            item.price?.price?.text ||
-            item.price?.unitPrice?.formatted?.value ||
-            item.price?.unitPrice?.text ||
-            '0';
-          const price = parseInt(String(priceText).replace(/[,\s원]/g, ''), 10);
+    this.logger.warn(
+      'Google Vision 인증정보가 없습니다. .env.local에 GOOGLE_VISION_CREDENTIALS_BASE64를 설정해주세요.',
+    );
+    return null;
+  }
 
-          const countText =
-            item.count?.formatted?.value || item.count?.text || '1';
-          const quantity =
-            parseInt(String(countText).replace(/[^\d]/g, ''), 10) || 1;
+  /**
+   * Google의 문서 읽기 순서가 영수증 열을 섞는 경우가 있어 단어 좌표로
+   * 실제 이미지의 가로줄을 다시 조립한다.
+   */
+  private extractVisualLines(
+    annotation: protos.google.cloud.vision.v1.ITextAnnotation,
+  ): string[] {
+    const words: VisualWord[] = [];
 
-          if (name && price > 0) {
-            result.items.push({ name, price, quantity });
+    for (const page of annotation.pages ?? []) {
+      for (const block of page.blocks ?? []) {
+        for (const paragraph of block.paragraphs ?? []) {
+          for (const word of paragraph.words ?? []) {
+            const text = (word.symbols ?? [])
+              .map((symbol) => symbol.text ?? '')
+              .join('');
+            const vertices = word.boundingBox?.vertices ?? [];
+            if (!text || vertices.length === 0) {
+              continue;
+            }
+
+            const xCoordinates = vertices.map((vertex) => vertex.x ?? 0);
+            const yCoordinates = vertices.map((vertex) => vertex.y ?? 0);
+            const minY = Math.min(...yCoordinates);
+            const maxY = Math.max(...yCoordinates);
+            words.push({
+              text,
+              x: Math.min(...xCoordinates),
+              centerY: (minY + maxY) / 2,
+              height: Math.max(maxY - minY, 1),
+            });
           }
         }
       }
-
-      this.logger.log(
-        `OCR 파싱 완료: ${result.storeName}, ${result.items.length}개 품목, 총 ${result.totalPrice}원`,
-      );
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'unknown error';
-      this.logger.error(`OCR 응답 파싱 실패: ${message}`);
     }
 
-    return result;
+    words.sort((a, b) => a.centerY - b.centerY || a.x - b.x);
+    const lines: VisualLine[] = [];
+
+    for (const word of words) {
+      let line = lines.find(
+        (candidate) =>
+          Math.abs(candidate.centerY - word.centerY) <=
+          Math.max(6, Math.min(candidate.height, word.height) * 0.55),
+      );
+
+      if (!line) {
+        line = {
+          centerY: word.centerY,
+          height: word.height,
+          words: [],
+        };
+        lines.push(line);
+      }
+
+      line.words.push(word);
+      line.centerY =
+        line.words.reduce((sum, current) => sum + current.centerY, 0) /
+        line.words.length;
+      line.height =
+        line.words.reduce((sum, current) => sum + current.height, 0) /
+        line.words.length;
+    }
+
+    return lines
+      .sort((a, b) => a.centerY - b.centerY)
+      .map((line) =>
+        line.words
+          .sort((a, b) => a.x - b.x)
+          .map((word) => word.text)
+          .join(' '),
+      );
+  }
+
+  private emptyResult(): OcrResult {
+    return { storeName: null, items: [], totalPrice: null };
   }
 }

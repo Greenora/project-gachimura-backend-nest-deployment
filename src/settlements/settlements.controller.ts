@@ -202,11 +202,11 @@ export class SettlementsController {
 
     const ocrResult = await this.ocrService.parseReceipt(file.path);
 
-    // OCR 결과가 비어있으면 API 키 미설정 안내
+    // OCR 결과가 비어있으면 재촬영 또는 직접 입력 안내
     if (ocrResult.items.length === 0) {
       return {
         message:
-          'OCR 결과가 없습니다. CLOVA OCR API 키를 확인하거나 품목을 직접 입력해주세요.',
+          '영수증 품목을 인식하지 못했습니다. 이미지를 다시 촬영하거나 품목을 직접 입력해주세요.',
         filename: file.filename,
         storeName: null,
         items: [],
