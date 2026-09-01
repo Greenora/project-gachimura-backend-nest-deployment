@@ -21,6 +21,7 @@
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/create-initial-data.ts"
   },
   "dependencies": {
+    "@google-cloud/vision": "^6.0.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",

@@ -29,7 +29,7 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
     // 환경변수 설정
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env.local', '.env'],
     }),
 
     //DB 설정 (Async 방식 유지)
