@@ -104,6 +104,13 @@ export class PartyMembersService {
     return this.partyMemberRepository.save(newMember);
   }
 
+  private async syncPartyCurrentCount(partyId: number) {
+    const count = await this.partyMemberRepository.count({
+      where: { partyId, status: 'APPROVED' },
+    });
+    await this.partyRepository.update(partyId, { currentCount: count });
+  }
+
   async updateStatus(
     partyId: number,
     userId: number,
@@ -127,6 +134,10 @@ export class PartyMembersService {
     const previousStatus = member.status;
     member.status = status;
     const saved = await this.partyMemberRepository.save(member);
+
+    if (previousStatus !== status) {
+      await this.syncPartyCurrentCount(partyId);
+    }
 
     // 승인되었을 때 시스템 메시지 전송
     if (status === 'APPROVED' && previousStatus !== 'APPROVED') {
@@ -165,6 +176,10 @@ export class PartyMembersService {
       );
     }
 
-    return this.partyMemberRepository.delete({ partyId, userId });
+    const deleteResult = await this.partyMemberRepository.delete({ partyId, userId });
+    if (member?.status === 'APPROVED') {
+      await this.syncPartyCurrentCount(partyId);
+    }
+    return deleteResult;
   }
 }

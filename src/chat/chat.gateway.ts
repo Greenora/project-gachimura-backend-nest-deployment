@@ -142,7 +142,10 @@ export class ChatGateway implements OnGatewayConnection {
       relations: { user: true },
     });
 
-    if (!member) return;
+    if (!member) {
+      client.emit('error', '해당 모임의 멤버가 아닙니다.');
+      return;
+    }
 
     const message = payload.message.trim();
     console.log(`[Room ${payload.partyId}] User ${userId}: ${message}`);

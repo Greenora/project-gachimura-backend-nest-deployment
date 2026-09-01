@@ -69,7 +69,7 @@ describe('ChatGateway', () => {
       data: { user: { id: 5 } },
       rooms: new Set(['party_9']),
       emit: jest.fn(),
-    } as never;
+    } as any;
 
     await gateway.handleMessage(undefined, client);
 
