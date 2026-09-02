@@ -1,4 +1,12 @@
-import { Controller, Post, Body, Get, Param, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ReviewsService } from './reviews.service';
@@ -7,12 +15,15 @@ import { CreateReviewDto } from './dto/create-review.dto';
 @ApiTags('Reviews')
 @Controller('reviews')
 export class ReviewsController {
-  constructor(private readonly reviewsService: ReviewsService) { }
+  constructor(private readonly reviewsService: ReviewsService) {}
 
   @Post()
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth('access-token')
-  @ApiOperation({ summary: '후기 작성', description: '모임 종료 후 유저에게 후기를 남깁니다.' })
+  @ApiOperation({
+    summary: '후기 작성',
+    description: '모임 종료 후 유저에게 후기를 남깁니다.',
+  })
   create(@Req() req, @Body() dto: CreateReviewDto) {
     const reviewerId = req.user.id;
     return this.reviewsService.create(reviewerId, dto);

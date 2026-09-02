@@ -37,12 +37,13 @@ interface AuthenticatedRequest {
 @ApiBearerAuth('access-token')
 @Controller('parties')
 export class PartiesController {
-  constructor(private readonly partiesService: PartiesService) { }
+  constructor(private readonly partiesService: PartiesService) {}
 
   @Get()
   @ApiOperation({
     summary: '모든 모임 조회 (검색/정렬/필터)',
-    description: '생성된 모든 모임 목록을 가져옵니다. 검색(?search=), 정렬(?sort=latest|imminent), 만료포함(?completed=true|false) 필터를 지원합니다.',
+    description:
+      '생성된 모든 모임 목록을 가져옵니다. 검색(?search=), 정렬(?sort=latest|imminent), 만료포함(?completed=true|false) 필터를 지원합니다.',
   })
   findAll(
     @Query('search') search?: string,
@@ -82,7 +83,6 @@ export class PartiesController {
   findAllByUser(@Param('userId') userId: string) {
     return this.partiesService.findAllByUser(+userId);
   }
-
 
   @Post()
   @UseGuards(AuthGuard('jwt'))

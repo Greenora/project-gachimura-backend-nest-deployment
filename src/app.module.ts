@@ -42,7 +42,10 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
         port: configService.get<number>('DB_PORT') || 3306,
         username: configService.get<string>('DB_USERNAME') || 'root',
         password: configService.get<string>('DB_PASSWORD') || 'root',
-        database: configService.get<string>('DB_NAME') || configService.get<string>('DB_DATABASE') || 'gachimura',
+        database:
+          configService.get<string>('DB_NAME') ||
+          configService.get<string>('DB_DATABASE') ||
+          'gachimura',
         entities: [
           User,
           Party,

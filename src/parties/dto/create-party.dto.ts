@@ -1,4 +1,9 @@
-import { IsString, IsOptional, IsNotEmpty, IsNumberString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsNotEmpty,
+  IsNumberString,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreatePartyDto {
