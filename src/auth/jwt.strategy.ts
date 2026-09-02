@@ -3,6 +3,20 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 
+interface RequestWithCookies {
+  cookies?: Record<string, string | undefined>;
+  headers?: { cookie?: string };
+}
+
+function accessTokenFromCookie(request: RequestWithCookies): string | null {
+  const parsedCookie = request.cookies?.accessToken;
+  if (parsedCookie) return parsedCookie;
+
+  const cookieHeader = request.headers?.cookie;
+  const match = cookieHeader?.match(/(?:^|;\s*)accessToken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 /**
  * 프론트에서 Bearer 토큰으로 API 요청할 때 이 클래스가 토큰을 검증함
  * @UseGuards(AuthGuard('jwt')) 데코레이터 쓰면 이 클래스가 작동함
@@ -20,7 +34,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       // 토큰을 어디서 찾을지 설정
       // 헤더의 "Authorization: Bearer <토큰>" 형식에서 추출함
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        accessTokenFromCookie,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
 
       // 만료된 토큰 허용 안함 (false = 거절)
       // true로 하면 만료된 토큰도 통과시켜버림 (보안상 위험)
