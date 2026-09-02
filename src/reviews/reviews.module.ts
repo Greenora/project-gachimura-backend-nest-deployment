@@ -13,4 +13,4 @@ import { PartyMember } from '../party-members/entities/party-member.entity';
   providers: [ReviewsService],
   exports: [ReviewsService],
 })
-export class ReviewsModule { }
+export class ReviewsModule {}

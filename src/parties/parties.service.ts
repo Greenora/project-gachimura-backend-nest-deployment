@@ -30,7 +30,7 @@ export class PartiesService {
   // 모임 생성 (파일 업로드 포함)
   async createWithFile(dto: CreatePartyDto, file?: any, hostId?: number) {
     console.log('DTO RAW:', dto);
-    try { 
+    try {
       const {
         title,
         content,
@@ -63,8 +63,9 @@ export class PartiesService {
         latitude: latitude ? Number(latitude) : null,
         longitude: longitude ? Number(longitude) : null,
         meetDate,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-        thumbnailImage: file && typeof file.filename === 'string' ? file.filename : null,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        thumbnailImage:
+          file && typeof file.filename === 'string' ? file.filename : null,
         hostId: hostId,
         status: 'RECRUITING',
       } as Partial<Party>);
@@ -89,7 +90,6 @@ export class PartiesService {
     }
   }
 
-
   // 모임 목록 조회 (검색/정렬/모집중 필터)
   async findAll(
     search?: string,
@@ -99,13 +99,13 @@ export class PartiesService {
     // 검색 조건(OR)
     let where = search
       ? [
-        { title: ILike(`%${search}%`) },
-        { content: ILike(`%${search}%`) },
-        { storeName: ILike(`%${search}%`) },
-        { addressKo: ILike(`%${search}%`) },
-        { addressJp: ILike(`%${search}%`) },
-        { host: { nickname: ILike(`%${search}%`) } },
-      ]
+          { title: ILike(`%${search}%`) },
+          { content: ILike(`%${search}%`) },
+          { storeName: ILike(`%${search}%`) },
+          { addressKo: ILike(`%${search}%`) },
+          { addressJp: ILike(`%${search}%`) },
+          { host: { nickname: ILike(`%${search}%`) } },
+        ]
       : {};
 
     // 모집중 필터
@@ -136,7 +136,6 @@ export class PartiesService {
 
     return parties.map((party) => this.toPublicParty(party));
   }
-
 
   // 모임 상세 조회 (유저별 상태 포함)
   async findOne(partyId: number, userId?: number) {

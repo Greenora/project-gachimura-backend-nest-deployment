@@ -176,7 +176,10 @@ export class PartyMembersService {
       );
     }
 
-    const deleteResult = await this.partyMemberRepository.delete({ partyId, userId });
+    const deleteResult = await this.partyMemberRepository.delete({
+      partyId,
+      userId,
+    });
     if (member?.status === 'APPROVED') {
       await this.syncPartyCurrentCount(partyId);
     }

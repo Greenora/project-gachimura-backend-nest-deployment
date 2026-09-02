@@ -25,7 +25,9 @@ export class SettlementItemMember {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @ManyToOne(() => SettlementItem, (item) => item.members, { onDelete: 'CASCADE' })
+  @ManyToOne(() => SettlementItem, (item) => item.members, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'item_id' })
   item: SettlementItem;
 
