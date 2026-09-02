@@ -49,8 +49,18 @@ export class ChatGateway implements OnGatewayConnection {
   ) {}
 
   handleConnection(client: Socket): void {
-    const token = (client.handshake.auth as Record<string, unknown> | undefined)
-      ?.token;
+    const authToken = (
+      client.handshake.auth as Record<string, unknown> | undefined
+    )?.token;
+    const cookieToken = client.handshake.headers.cookie?.match(
+      /(?:^|;\s*)accessToken=([^;]+)/,
+    )?.[1];
+    const token =
+      typeof authToken === 'string'
+        ? authToken
+        : cookieToken
+          ? decodeURIComponent(cookieToken)
+          : undefined;
     if (typeof token !== 'string' || !token) {
       client.emit('error', '채팅 연결에 인증 토큰이 필요합니다.');
       client.disconnect(true);

@@ -7,6 +7,11 @@ import {
   Res,
   Response,
 } from '@nestjs/common';
+import type {
+  CookieOptions,
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+} from 'express';
 import { AuthGuard } from '@nestjs/passport';
 import {
   ApiTags,
@@ -26,6 +31,44 @@ import { KakaoLoginDto } from './dto/kakao-login.dto';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  private cookieOptions(maxAge?: number): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      ...(maxAge ? { maxAge } : {}),
+    };
+  }
+
+  private setAuthCookies(
+    response: ExpressResponse,
+    auth: Awaited<ReturnType<AuthService['login']>>,
+    refreshMaxAge: number,
+  ) {
+    response.cookie(
+      'accessToken',
+      auth.accessToken,
+      this.cookieOptions(60 * 60 * 1000),
+    );
+    response.cookie(
+      'refreshToken',
+      auth.refreshToken,
+      this.cookieOptions(refreshMaxAge),
+    );
+    return { expiresIn: auth.expiresIn, user: auth.user };
+  }
+
+  private readCookie(
+    request: ExpressRequest,
+    name: string,
+  ): string | undefined {
+    const match = request.headers.cookie?.match(
+      new RegExp(`(?:^|;\\s*)${name}=([^;]+)`),
+    );
+    return match ? decodeURIComponent(match[1]) : undefined;
+  }
 
   // 프론트에서 이메일 입력하면 이 API 호출해서 기존 회원인지 체크함
   // 있으면 로그인 화면, 없으면 회원가입 화면으로 전환
@@ -153,8 +196,11 @@ export class AuthController {
   @ApiResponse({ status: 401, description: '이메일 또는 비밀번호가 잘못됨' })
   async login(
     @Body() body: { email: string; password: string; rememberMe?: boolean },
+    @Res({ passthrough: true }) response: ExpressResponse,
   ) {
-    return await this.authService.login(body);
+    const auth = await this.authService.login(body);
+    const refreshMaxAge = (body.rememberMe ? 30 : 1) * 24 * 60 * 60 * 1000;
+    return this.setAuthCookies(response, auth, refreshMaxAge);
   }
 
   // 카카오 소셜 로그인
@@ -204,12 +250,16 @@ export class AuthController {
       },
     },
   })
-  async kakaoLogin(@Body() body: KakaoLoginDto) {
-    return await this.authService.loginWithKakao(
+  async kakaoLogin(
+    @Body() body: KakaoLoginDto,
+    @Res({ passthrough: true }) response: ExpressResponse,
+  ) {
+    const auth = await this.authService.loginWithKakao(
       body.code,
       body.redirectUri,
       body.language,
     );
+    return this.setAuthCookies(response, auth, 7 * 24 * 60 * 60 * 1000);
   }
 
   // LINE 소셜 로그인
@@ -261,12 +311,16 @@ export class AuthController {
     },
   })
   @ApiResponse({ status: 500, description: 'LINE 인증 실패' })
-  async lineLogin(@Body() body: LineLoginDto) {
-    return await this.authService.loginWithLine(
+  async lineLogin(
+    @Body() body: LineLoginDto,
+    @Res({ passthrough: true }) response: ExpressResponse,
+  ) {
+    const auth = await this.authService.loginWithLine(
       body.code,
       body.redirectUri,
       body.language,
     );
+    return this.setAuthCookies(response, auth, 7 * 24 * 60 * 60 * 1000);
   }
 
   // Access Token 만료되면 이거로 새로 발급받음
@@ -304,8 +358,18 @@ export class AuthController {
     status: 401,
     description: '유효하지 않거나 만료된 Refresh Token',
   })
-  async refresh(@Body() body: { refreshToken: string }) {
-    return await this.authService.refresh(body.refreshToken);
+  async refresh(
+    @Request() request: ExpressRequest,
+    @Res({ passthrough: true }) response: ExpressResponse,
+  ) {
+    const refreshToken = this.readCookie(request, 'refreshToken');
+    const result = await this.authService.refresh(refreshToken ?? '');
+    response.cookie(
+      'accessToken',
+      result.accessToken,
+      this.cookieOptions(60 * 60 * 1000),
+    );
+    return { expiresIn: 3600 };
   }
 
   // 로그아웃 - DB에서 Refresh Token 삭제함
@@ -329,15 +393,17 @@ export class AuthController {
     schema: { example: { message: '로그아웃 되었습니다.' } },
   })
   @ApiResponse({ status: 401, description: '인증 실패' })
-  async logout(@Request() req: { user: { id: number } }, @Res() res) {
+  async logout(
+    @Request() req: { user: { id: number } },
+    @Res({ passthrough: true }) res: ExpressResponse,
+  ) {
     await this.authService.logout(req.user.id);
     // 쿠키 만료 헤더 내려주기
     res.clearCookie('refreshToken', {
       path: '/',
-      httpOnly: true,
-      secure: true,
+      ...this.cookieOptions(),
     });
-    res.clearCookie('accessToken', { path: '/', httpOnly: true, secure: true });
-    return res.status(200).json({ message: '로그아웃 되었습니다.' });
+    res.clearCookie('accessToken', this.cookieOptions());
+    return { message: '로그아웃 되었습니다.' };
   }
 }
