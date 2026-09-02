@@ -24,9 +24,12 @@ import {
 } from '@nestjs/swagger';
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { AuthGuard } from '@nestjs/passport';
+import {
+  ImageFileValidationPipe,
+  imageUploadOptions,
+  THUMBNAIL_MAX_SIZE,
+} from '../common/image-upload';
 
 // JWT 인증된 요청 타입
 interface AuthenticatedRequest {
@@ -37,12 +40,13 @@ interface AuthenticatedRequest {
 @ApiBearerAuth('access-token')
 @Controller('parties')
 export class PartiesController {
-  constructor(private readonly partiesService: PartiesService) { }
+  constructor(private readonly partiesService: PartiesService) {}
 
   @Get()
   @ApiOperation({
     summary: '모든 모임 조회 (검색/정렬/필터)',
-    description: '생성된 모든 모임 목록을 가져옵니다. 검색(?search=), 정렬(?sort=latest|imminent), 만료포함(?completed=true|false) 필터를 지원합니다.',
+    description:
+      '생성된 모든 모임 목록을 가져옵니다. 검색(?search=), 정렬(?sort=latest|imminent), 만료포함(?completed=true|false) 필터를 지원합니다.',
   })
   findAll(
     @Query('search') search?: string,
@@ -83,7 +87,6 @@ export class PartiesController {
     return this.partiesService.findAllByUser(+userId);
   }
 
-
   @Post()
   @UseGuards(AuthGuard('jwt'))
   @ApiConsumes('multipart/form-data')
@@ -92,21 +95,13 @@ export class PartiesController {
     description: '새로운 장보기 모임을 생성합니다.',
   })
   @UseInterceptors(
-    FileInterceptor('thumbnail_image', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, callback) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          callback(null, `${uniqueSuffix}${extname(file.originalname)}`);
-        },
-      }),
-    }),
+    FileInterceptor('thumbnail_image', imageUploadOptions(THUMBNAIL_MAX_SIZE)),
   )
   create(
     @Req() req: AuthenticatedRequest,
     @Body() createPartyDto: CreatePartyDto,
-    @UploadedFile() file: any,
+    @UploadedFile(new ImageFileValidationPipe())
+    file?: Express.Multer.File,
   ) {
     const hostId = req.user.id;
     return this.partiesService.createWithFile(createPartyDto, file, hostId);
