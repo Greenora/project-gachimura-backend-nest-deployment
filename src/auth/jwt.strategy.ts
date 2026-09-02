@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
+import { requireJwtSecret } from './jwt-secret';
 
 interface RequestWithCookies {
   cookies?: Record<string, string | undefined>;
@@ -45,9 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
       // 토큰 암호 풀 때 사용할 비밀키
       // 로그인할 때 토큰 만들 때 쓴 키랑 똑같아야 함
-      secretOrKey:
-        configService.get<string>('JWT_SECRET') ||
-        'gachimura_jwt_secret_key_default',
+      secretOrKey: requireJwtSecret(configService),
     });
   }
 

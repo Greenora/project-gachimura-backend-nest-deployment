@@ -8,6 +8,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { EmailVerification } from './entities/email-verification.entity';
+import { requireJwtSecret } from './jwt-secret';
 
 /**
  * Auth 모듈 - 인증 관련 기능들을 한데 모아놓음
@@ -26,9 +27,7 @@ import { EmailVerification } from './entities/email-verification.entity';
       inject: [ConfigService], // ConfigService 주입받아서 사용
       useFactory: async (configService: ConfigService) => ({
         // 토큰 암호화할 때 사용할 비밀키 (절대 노출되면 안됨)
-        secret:
-          configService.get<string>('JWT_SECRET') ||
-          'gachimura_jwt_secret_key_default',
+        secret: requireJwtSecret(configService),
         // 토큰 옵션 설정
         signOptions: {
           expiresIn: '10s', // Access Token은 1시간만 유효 (보안상 짧게)
