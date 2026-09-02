@@ -23,6 +23,7 @@ import { CommunityPost } from './community/entities/community-post.entity';
 import { CommunityPostLike } from './community/entities/community-post-like.entity';
 import { CommunityComment } from './community/entities/community-comment.entity';
 import { EmailVerification } from './auth/entities/email-verification.entity';
+import { minutes, ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
@@ -31,6 +32,13 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+
+    ThrottlerModule.forRoot([
+      {
+        ttl: minutes(1),
+        limit: 20,
+      },
+    ]),
 
     //DB 설정 (Async 방식 유지)
     TypeOrmModule.forRootAsync({
@@ -42,7 +50,10 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
         port: configService.get<number>('DB_PORT') || 3306,
         username: configService.get<string>('DB_USERNAME') || 'root',
         password: configService.get<string>('DB_PASSWORD') || 'root',
-        database: configService.get<string>('DB_NAME') || configService.get<string>('DB_DATABASE') || 'gachimura',
+        database:
+          configService.get<string>('DB_NAME') ||
+          configService.get<string>('DB_DATABASE') ||
+          'gachimura',
         entities: [
           User,
           Party,

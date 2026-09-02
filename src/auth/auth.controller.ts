@@ -21,15 +21,18 @@ import { SendEmailVerificationDto } from './dto/send-email-verification.dto';
 import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto';
 import { SignupDto } from './dto/signup.dto';
 import { KakaoLoginDto } from './dto/kakao-login.dto';
+import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 @ApiTags('Auth')
 @Controller('auth')
+@UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   // 프론트에서 이메일 입력하면 이 API 호출해서 기존 회원인지 체크함
   // 있으면 로그인 화면, 없으면 회원가입 화면으로 전환
   @Post('check')
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @ApiOperation({
     summary: '이메일 중복 체크',
     description: '해당 이메일로 가입된 유저가 있는지 확인',
@@ -52,6 +55,7 @@ export class AuthController {
   }
 
   @Post('email-verification/send')
+  @Throttle({ default: { limit: 3, ttl: minutes(10) } })
   @ApiOperation({
     summary: '회원가입 이메일 인증코드 발송',
     description: '회원가입 이메일로 6자리 인증코드를 발송합니다.',
@@ -71,6 +75,7 @@ export class AuthController {
   }
 
   @Post('email-verification/verify')
+  @Throttle({ default: { limit: 5, ttl: minutes(10) } })
   @ApiOperation({
     summary: '회원가입 이메일 인증코드 검증',
     description:
@@ -96,6 +101,7 @@ export class AuthController {
   // 이메일/비번으로 회원가입
   // 닉네임 안보내면 랜덤으로 생성됨 (한글/일본어 둘 다)
   @Post('signup')
+  @Throttle({ default: { limit: 5, ttl: minutes(10) } })
   @ApiOperation({
     summary: '이메일 회원가입',
     description: '이메일과 비밀번호로 회원가입. 닉네임 미입력시 랜덤 생성',
@@ -114,6 +120,7 @@ export class AuthController {
   // 이메일/비번 로그인
   // rememberMe 체크하면 refresh token 30일, 안하면 1일
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: minutes(1) } })
   @ApiOperation({
     summary: '이메일 로그인',
     description:
@@ -161,6 +168,7 @@ export class AuthController {
   // 프론트에서 카카오 인가 코드 받아서 여기로 보냄
   // 신규 유저면 자동으로 회원가입 처리됨
   @Post('kakao')
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @ApiOperation({
     summary: '카카오 로그인',
     description: '카카오 인가 코드로 로그인/회원가입. 신규 유저는 자동 가입됨',
@@ -216,6 +224,7 @@ export class AuthController {
   // 프론트에서 LINE 인가 코드 받아서 여기로 보냄
   // redirectUri는 LINE Developers 콘솔 설정이랑 똑같아야 함
   @Post('line')
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @ApiOperation({
     summary: 'LINE 로그인',
     description: 'LINE 인가 코드로 로그인/회원가입. 신규 유저는 자동 가입됨',
@@ -273,6 +282,7 @@ export class AuthController {
   // Refresh Token만 있으면 됨 (로그인 안해도 됨)
   // TODO: 프론트에서 axios interceptor로 자동 갱신 구현하면 좋음
   @Post('refresh')
+  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
   @ApiOperation({
     summary: '토큰 갱신',
     description:
