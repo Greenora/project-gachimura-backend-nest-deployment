@@ -26,8 +26,12 @@ import { CreateSettlementDto } from './dto/create-settlement.dto';
 import { UpdateSettlementItemsDto } from './dto/update-settlement-items.dto';
 import { SelectItemsDto } from './dto/select-items.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { promises as fs } from 'fs';
+import {
+  ImageFileValidationPipe,
+  imageUploadOptions,
+  RECEIPT_MAX_SIZE,
+} from '../common/image-upload';
 
 interface AuthenticatedRequest {
   user: { id: number; email: string; nickname: string };
@@ -181,45 +185,40 @@ export class SettlementsController {
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: '영수증 업로드 및 OCR 파싱' })
   @UseInterceptors(
-    FileInterceptor('receipt', {
-      storage: diskStorage({
-        destination: './uploads',
-        filename: (req, file, callback) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          callback(
-            null,
-            `receipt-${uniqueSuffix}${extname(file.originalname)}`,
-          );
-        },
-      }),
-    }),
+    FileInterceptor(
+      'receipt',
+      imageUploadOptions(RECEIPT_MAX_SIZE, 'receipt-'),
+    ),
   )
-  async uploadReceipt(@UploadedFile() file?: Express.Multer.File) {
+  async uploadReceipt(
+    @UploadedFile(new ImageFileValidationPipe()) file?: Express.Multer.File,
+  ) {
     if (!file) {
       return { message: '파일이 업로드되지 않았습니다.', items: [] };
     }
 
-    const ocrResult = await this.ocrService.parseReceipt(file.path);
+    try {
+      const ocrResult = await this.ocrService.parseReceipt(file.path);
 
-    // OCR 결과가 비어있으면 재촬영 또는 직접 입력 안내
-    if (ocrResult.items.length === 0) {
+      // OCR 결과가 비어있으면 재촬영 또는 직접 입력 안내
+      if (ocrResult.items.length === 0) {
+        return {
+          message:
+            '영수증 품목을 인식하지 못했습니다. 이미지를 다시 촬영하거나 품목을 직접 입력해주세요.',
+          storeName: null,
+          items: [],
+          totalPrice: null,
+        };
+      }
+
       return {
-        message:
-          '영수증 품목을 인식하지 못했습니다. 이미지를 다시 촬영하거나 품목을 직접 입력해주세요.',
-        filename: file.filename,
-        storeName: null,
-        items: [],
-        totalPrice: null,
+        message: '영수증 인식이 완료되었습니다.',
+        storeName: ocrResult.storeName,
+        items: ocrResult.items,
+        totalPrice: ocrResult.totalPrice,
       };
+    } finally {
+      await fs.unlink(file.path).catch(() => undefined);
     }
-
-    return {
-      message: '영수증 인식이 완료되었습니다.',
-      filename: file.filename,
-      storeName: ocrResult.storeName,
-      items: ocrResult.items,
-      totalPrice: ocrResult.totalPrice,
-    };
   }
 }
