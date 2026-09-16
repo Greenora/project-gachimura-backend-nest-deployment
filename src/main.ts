@@ -22,6 +22,9 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // 전역 API 접두사 설정 (/api/...)
+  app.setGlobalPrefix('api');
+
   // Swagger 설정
   const config = new DocumentBuilder()
     .setTitle('Gachimura Backend API')

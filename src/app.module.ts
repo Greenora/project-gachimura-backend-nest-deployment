@@ -24,9 +24,11 @@ import { CommunityPostLike } from './community/entities/community-post-like.enti
 import { CommunityComment } from './community/entities/community-comment.entity';
 import { EmailVerification } from './auth/entities/email-verification.entity';
 import { minutes, ThrottlerModule } from '@nestjs/throttler';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
+    HealthModule,
     // 환경변수 설정
     ConfigModule.forRoot({
       isGlobal: true,
