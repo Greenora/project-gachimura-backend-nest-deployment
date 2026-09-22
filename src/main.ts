@@ -40,7 +40,7 @@ async function bootstrap() {
     )
     .setVersion('1.0')
     .addServer('http://localhost:8000', 'Local')
-    .addServer('http://backend:3000', 'Docker network')
+    .addServer('http://backend:8000', 'Docker network')
     .addBearerAuth(
       {
         type: 'http',
