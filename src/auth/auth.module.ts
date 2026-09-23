@@ -9,6 +9,8 @@ import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
 import { EmailVerification } from './entities/email-verification.entity';
 import { requireJwtSecret } from './jwt-secret';
+import { User } from '../users/entities/user.entity';
+import { PasswordResetService } from './password-reset.service';
 
 /**
  * Auth 모듈 - 인증 관련 기능들을 한데 모아놓음
@@ -19,7 +21,7 @@ import { requireJwtSecret } from './jwt-secret';
   imports: [
     UsersModule, // 유저 정보 가져올 때 필요해서 import
     PassportModule, // JWT 인증 라이브러리
-    TypeOrmModule.forFeature([EmailVerification]),
+    TypeOrmModule.forFeature([EmailVerification, User]),
 
     // JWT 모듈 설정 - 토큰 만들고 검증하는 기능
     JwtModule.registerAsync({
@@ -36,7 +38,7 @@ import { requireJwtSecret } from './jwt-secret';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, PasswordResetService],
   exports: [AuthService],
 })
 export class AuthModule {}

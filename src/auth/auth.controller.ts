@@ -27,12 +27,32 @@ import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto'
 import { SignupDto } from './dto/signup.dto';
 import { KakaoLoginDto } from './dto/kakao-login.dto';
 import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { PasswordResetService } from './password-reset.service';
+import {
+  RequestPasswordResetDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordReset: PasswordResetService,
+  ) {}
+
+  @Post('password-reset/request')
+  @Throttle({ default: { limit: 3, ttl: minutes(10) } })
+  requestPasswordReset(@Body() body: RequestPasswordResetDto) {
+    return this.passwordReset.request(body.email.trim());
+  }
+
+  @Post('password-reset/confirm')
+  @Throttle({ default: { limit: 5, ttl: minutes(10) } })
+  resetPassword(@Body() body: ResetPasswordDto) {
+    return this.passwordReset.reset(body.token, body.password);
+  }
 
   private cookieOptions(maxAge?: number): CookieOptions {
     return {
