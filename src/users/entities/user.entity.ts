@@ -70,6 +70,23 @@ export class User {
   }) // 토큰 갱신용, 로그아웃시 삭제
   refreshToken?: string | null;
 
+  @Column({
+    name: 'password_reset_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+    select: false,
+  })
+  passwordResetHash?: string | null;
+
+  @Column({
+    name: 'password_reset_expires_at',
+    type: 'datetime',
+    nullable: true,
+    select: false,
+  })
+  passwordResetExpiresAt?: Date | null;
+
   @Column({ default: 'LOCAL' }) // LOCAL/KAKAO/LINE
   provider: string;
 
