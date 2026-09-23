@@ -16,7 +16,7 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 import { SignupDto } from './dto/signup.dto';
 import { EmailVerification } from './entities/email-verification.entity';
 import * as bcrypt from 'bcrypt';
-import { createHash } from 'crypto';
+import { createHash, randomInt } from 'crypto';
 import * as nodemailer from 'nodemailer';
 
 // 로그인 요청 DTO
@@ -60,6 +60,8 @@ export class AuthService {
   ) {}
 
   private isEmailVerificationRequired(): boolean {
+    if (this.configService.get<string>('NODE_ENV') === 'production')
+      return true;
     const rawValue =
       this.configService.get<string>('EMAIL_VERIFICATION_REQUIRED') ?? 'false';
     return rawValue.toLowerCase() === 'true';
@@ -70,7 +72,7 @@ export class AuthService {
   }
 
   private generateVerificationCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
   }
 
   private async sendVerificationMail(
@@ -195,9 +197,11 @@ export class AuthService {
     return { exists: !!user }; // 있으면 true, 없으면 false
   }
 
-  async sendEmailVerificationCode(
-    email: string,
-  ): Promise<{ message: string; expiresInMinutes: number }> {
+  async sendEmailVerificationCode(email: string): Promise<{
+    message: string;
+    expiresInMinutes: number;
+    emailVerificationToken?: string;
+  }> {
     const existingUser = await this.usersService.findByEmail(email);
     if (existingUser) {
       throw new BadRequestException('이미 가입된 이메일입니다.');
@@ -207,6 +211,7 @@ export class AuthService {
       return {
         message: '개발 모드에서는 이메일 인증이 비활성화되어 있습니다.',
         expiresInMinutes: this.verificationCodeExpireMinutes,
+        emailVerificationToken: this.createSignupVerificationToken(email),
       };
     }
 

@@ -57,9 +57,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
    *                  예: { email: 'user@test.com', sub: 1, nickname: '닉네임' }
    * @returns req.user에 저장될 유저 정보
    */
-  async validate(payload: any) {
+  validate(payload: { sub?: unknown; email?: unknown; nickname?: unknown }) {
     // payload 없으면 잘못된 토큰
-    if (!payload) {
+    if (
+      !payload ||
+      !Number.isSafeInteger(payload.sub) ||
+      Number(payload.sub) <= 0 ||
+      typeof payload.email !== 'string' ||
+      !payload.email ||
+      typeof payload.nickname !== 'string' ||
+      !payload.nickname
+    ) {
       throw new UnauthorizedException('유효하지 않은 토큰입니다');
     }
 
