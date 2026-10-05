@@ -21,6 +21,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
 import { LineLoginDto } from './dto/line-login.dto';
 import { SendEmailVerificationDto } from './dto/send-email-verification.dto';
 import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto';
@@ -93,7 +94,7 @@ export class AuthController {
     description: '이메일 존재 여부',
     schema: { example: { exists: true } },
   })
-  async checkEmail(@Body() body: { email: string }) {
+  async checkEmail(@Body() body: SendEmailVerificationDto) {
     return await this.authService.checkEmail(body.email);
   }
 
@@ -202,7 +203,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: '이메일 또는 비밀번호가 잘못됨' })
   async login(
-    @Body() body: { email: string; password: string; rememberMe?: boolean },
+    @Body() body: LoginDto,
     @Res({ passthrough: true }) response: ExpressResponse,
   ) {
     const auth = await this.authService.login(body);
