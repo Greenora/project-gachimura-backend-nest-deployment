@@ -72,7 +72,12 @@ import { RecipeChatModule } from './recipe-chat/recipe-chat.module';
           CommunityComment,
           EmailVerification,
         ],
-        synchronize: true,
+        synchronize:
+          configService.get<string>('NODE_ENV') !== 'production' &&
+          configService.get<string>('DB_SYNCHRONIZE') === 'true',
+        migrations: [__dirname + '/database/migrations/*{.ts,.js}'],
+        migrationsRun:
+          configService.get<string>('DB_MIGRATIONS_RUN') === 'true',
         charset: 'utf8mb4',
       }),
     }),

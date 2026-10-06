@@ -21,18 +21,39 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
 import { LineLoginDto } from './dto/line-login.dto';
 import { SendEmailVerificationDto } from './dto/send-email-verification.dto';
 import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto';
 import { SignupDto } from './dto/signup.dto';
 import { KakaoLoginDto } from './dto/kakao-login.dto';
 import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { PasswordResetService } from './password-reset.service';
+import {
+  RequestPasswordResetDto,
+  ResetPasswordDto,
+} from './dto/password-reset.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly passwordReset: PasswordResetService,
+  ) {}
+
+  @Post('password-reset/request')
+  @Throttle({ default: { limit: 3, ttl: minutes(10) } })
+  requestPasswordReset(@Body() body: RequestPasswordResetDto) {
+    return this.passwordReset.request(body.email.trim());
+  }
+
+  @Post('password-reset/confirm')
+  @Throttle({ default: { limit: 5, ttl: minutes(10) } })
+  resetPassword(@Body() body: ResetPasswordDto) {
+    return this.passwordReset.reset(body.token, body.password);
+  }
 
   private cookieOptions(maxAge?: number): CookieOptions {
     return {
@@ -93,7 +114,7 @@ export class AuthController {
     description: '이메일 존재 여부',
     schema: { example: { exists: true } },
   })
-  async checkEmail(@Body() body: { email: string }) {
+  async checkEmail(@Body() body: SendEmailVerificationDto) {
     return await this.authService.checkEmail(body.email);
   }
 
@@ -202,7 +223,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: '이메일 또는 비밀번호가 잘못됨' })
   async login(
-    @Body() body: { email: string; password: string; rememberMe?: boolean },
+    @Body() body: LoginDto,
     @Res({ passthrough: true }) response: ExpressResponse,
   ) {
     const auth = await this.authService.login(body);

@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
+import { corsOrigins } from './config/cors';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,9 +17,8 @@ async function bootstrap() {
   );
 
   // CORS 설정
-  // 로그인/쿠키 기능을 위해 origin: true, credentials: true 필수
   app.enableCors({
-    origin: true,
+    origin: corsOrigins(),
     credentials: true,
   });
 

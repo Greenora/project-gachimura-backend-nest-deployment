@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 import { AuthService } from '../auth/auth.service';
+import { isAllowedOrigin } from '../config/cors';
 
 interface ClientChatPayload {
   partyId: number;
@@ -31,9 +32,17 @@ import { PartyMember } from '../party-members/entities/party-member.entity';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allowed: boolean) => void,
+    ) => callback(null, isAllowedOrigin(origin)),
     credentials: true,
   },
+  // WebSocket handshakes do not enforce browser CORS; validate Origin here too.
+  allowRequest: (
+    request: { headers: { origin?: string } },
+    callback: (error: string | null, allowed: boolean) => void,
+  ) => callback(null, isAllowedOrigin(request.headers.origin)),
 })
 export class ChatGateway implements OnGatewayConnection {
   @WebSocketServer()
