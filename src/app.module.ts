@@ -25,6 +25,7 @@ import { CommunityComment } from './community/entities/community-comment.entity'
 import { EmailVerification } from './auth/entities/email-verification.entity';
 import { minutes, ThrottlerModule } from '@nestjs/throttler';
 import { HealthModule } from './health/health.module';
+import { RecipeChatModule } from './recipe-chat/recipe-chat.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { HealthModule } from './health/health.module';
     ReviewsModule, // 추가 (후기)
     SettlementsModule, // 정산
     CommunityModule, // 커뮤니티
+    RecipeChatModule, // 레시피 챗봇
   ],
   controllers: [],
   providers: [],
