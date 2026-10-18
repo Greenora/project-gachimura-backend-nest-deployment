@@ -160,7 +160,8 @@ export class AuthService {
     const payload: JwtPayload = {
       email: user.email,
       sub: user.id, // 유저 ID
-      nickname: user.nickname,
+      // Legacy accounts may lack a display name; their access token must still validate.
+      nickname: user.nickname || user.nickname_jp || '사용자',
     };
     return this.jwtService.sign(payload, { expiresIn: '1h' });
   }
