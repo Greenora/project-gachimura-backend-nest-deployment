@@ -12,6 +12,7 @@ import { Repository } from 'typeorm';
 import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 import { AuthService } from '../auth/auth.service';
 import { isAllowedOrigin } from '../config/cors';
+import { PushService } from '../push/push.service';
 
 interface ClientChatPayload {
   partyId: number;
@@ -57,6 +58,7 @@ export class ChatGateway implements OnGatewayConnection {
     @InjectRepository(PartyMember)
     private memberRepository: Repository<PartyMember>,
     private authService: AuthService,
+    private pushService: PushService,
   ) {}
 
   private reject(client: Socket, error: string): ChatAcknowledgement {
@@ -189,6 +191,9 @@ export class ChatGateway implements OnGatewayConnection {
         createdAt:
           savedChat.createdAt?.toISOString() || new Date().toISOString(),
       });
+      void this.pushService
+        .notifyParty(payload.partyId, userId)
+        .catch(() => undefined);
       return { ok: true };
     } catch {
       return this.reject(

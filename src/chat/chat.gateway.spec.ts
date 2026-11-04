@@ -4,6 +4,12 @@ import { AuthService } from '../auth/auth.service';
 import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { ChatGateway } from './chat.gateway';
+import { PushService } from '../push/push.service';
+
+const createPushService = () =>
+  ({
+    notifyParty: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as PushService;
 
 describe('ChatGateway', () => {
   it('잘못 인코딩된 인증 쿠키는 예외 없이 연결을 거절한다', () => {
@@ -12,6 +18,7 @@ describe('ChatGateway', () => {
       {} as Repository<ChatMessage>,
       {} as Repository<PartyMember>,
       { verifyAccessToken } as unknown as AuthService,
+      createPushService(),
     );
     const emit = jest.fn();
     const disconnect = jest.fn();
@@ -44,10 +51,14 @@ describe('ChatGateway', () => {
         },
       }),
     } as unknown as Repository<PartyMember>;
+    const notifyParty = jest
+      .fn()
+      .mockRejectedValue(new Error('private provider details'));
     const gateway = new ChatGateway(
       chatRepository,
       memberRepository,
       {} as AuthService,
+      { notifyParty } as unknown as PushService,
     );
     const emit = jest.fn();
     gateway.server = {
@@ -69,6 +80,7 @@ describe('ChatGateway', () => {
     );
 
     expect(reply).toEqual({ ok: true });
+    expect(notifyParty).toHaveBeenCalledWith(9, 5);
     expect(create).toHaveBeenCalledWith({
       partyId: 9,
       senderId: 5,
@@ -86,6 +98,7 @@ describe('ChatGateway', () => {
       {} as Repository<ChatMessage>,
       {} as Repository<PartyMember>,
       {} as AuthService,
+      createPushService(),
     );
     const emit = jest.fn();
     const client = {
@@ -110,6 +123,7 @@ describe('ChatGateway', () => {
         findOne: jest.fn().mockResolvedValue({ id: 1 }),
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
+      createPushService(),
     );
     let finishJoin!: () => void;
     const join = jest.fn(
@@ -142,6 +156,7 @@ describe('ChatGateway', () => {
         findOne: jest.fn().mockResolvedValue(null),
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
+      createPushService(),
     );
     const join = jest.fn();
     const client = {
@@ -168,6 +183,7 @@ describe('ChatGateway', () => {
         findOne: jest.fn().mockResolvedValue({ user: { nickname: 'Tester' } }),
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
+      createPushService(),
     );
     const broadcast = jest.fn();
     gateway.server = {
@@ -199,6 +215,7 @@ describe('ChatGateway', () => {
           .mockRejectedValue(new Error('private database details')),
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
+      createPushService(),
     );
     const join = jest.fn();
     const client = {
