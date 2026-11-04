@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ImageAnnotatorClient, protos } from '@google-cloud/vision';
 import * as fs from 'fs';
@@ -48,41 +53,72 @@ export class OcrService {
    */
   async parseReceipt(filePath: string): Promise<OcrResult> {
     const client = this.getVisionClient();
-    if (!client) {
-      return this.emptyResult();
-    }
-
     const absolutePath = path.resolve(filePath);
-
+    let content: Buffer;
     try {
-      const [response] = await client.documentTextDetection({
-        image: { content: fs.readFileSync(absolutePath) },
+      content = fs.readFileSync(absolutePath);
+    } catch {
+      throw this.unavailable('OCR_FILE_UNREADABLE');
+    }
+    let response: protos.google.cloud.vision.v1.IAnnotateImageResponse;
+    try {
+      [response] = await client.documentTextDetection({
+        image: { content },
         imageContext: { languageHints: ['ko', 'en'] },
       });
-
-      const annotation = response.fullTextAnnotation;
-      const fullText = annotation?.text?.trim() ?? '';
-      if (!fullText) {
-        this.logger.warn('Google Vision 응답에 인식된 텍스트가 없습니다.');
-        return this.emptyResult();
-      }
-
-      const visualLines = annotation
-        ? this.extractVisualLines(annotation)
-        : undefined;
-      const result = parseReceiptText(fullText, visualLines);
-      this.logger.log(
-        `OCR 파싱 완료: ${result.storeName ?? '상호명 없음'}, ${result.items.length}개 품목, 총 ${result.totalPrice ?? 0}원`,
-      );
-      return result;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'unknown error';
-      this.logger.error(`Google Vision OCR 호출 실패: ${message}`);
+      throw this.providerFailure(error);
+    }
+    if (response.error?.code) {
+      throw this.providerFailure(response.error);
+    }
+    const annotation = response.fullTextAnnotation;
+    const fullText = annotation?.text?.trim() ?? '';
+    if (!fullText) {
+      this.logger.warn('OCR_NO_TEXT');
       return this.emptyResult();
     }
+    const visualLines = annotation
+      ? this.extractVisualLines(annotation)
+      : undefined;
+    const result = parseReceiptText(fullText, visualLines);
+    this.logger.log(`OCR_RESULT items=${result.items.length}`);
+    return result;
   }
 
-  private getVisionClient(): ImageAnnotatorClient | null {
+  private unavailable(code: string): ServiceUnavailableException {
+    this.logger.error(code);
+    return new ServiceUnavailableException({
+      code,
+      message:
+        '영수증 자동 인식 서비스를 사용할 수 없습니다. 잠시 후 다시 시도하거나 품목을 직접 입력해주세요.',
+    });
+  }
+
+  private providerFailure(
+    error: unknown,
+  ): BadGatewayException | ServiceUnavailableException {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? error.code
+        : undefined;
+    if (code === 7 || code === 16) return this.unavailable('OCR_AUTH_FAILED');
+    if (
+      [4, 14, 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET'].includes(
+        code as string | number,
+      )
+    ) {
+      return this.unavailable('OCR_CONNECTION_FAILED');
+    }
+    this.logger.error('OCR_PROVIDER_ERROR');
+    return new BadGatewayException({
+      code: 'OCR_PROVIDER_ERROR',
+      message:
+        '영수증 자동 인식에 실패했습니다. 사진을 다시 선택하거나 품목을 직접 입력해주세요.',
+    });
+  }
+
+  private getVisionClient(): ImageAnnotatorClient {
     if (this.visionClient) {
       return this.visionClient;
     }
@@ -98,9 +134,12 @@ export class OcrService {
         ) as GoogleServiceAccountCredentials;
 
         if (
-          !credentials.project_id ||
-          !credentials.client_email ||
-          !credentials.private_key
+          typeof credentials?.project_id !== 'string' ||
+          !credentials.project_id.trim() ||
+          typeof credentials?.client_email !== 'string' ||
+          !credentials.client_email.trim() ||
+          typeof credentials?.private_key !== 'string' ||
+          !credentials.private_key.trim()
         ) {
           throw new Error('서비스 계정 필수 필드가 없습니다.');
         }
@@ -113,25 +152,21 @@ export class OcrService {
           },
         });
         return this.visionClient;
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : 'unknown error';
-        this.logger.error(
-          `GOOGLE_VISION_CREDENTIALS_BASE64 해석 실패: ${message}`,
-        );
-        return null;
+      } catch {
+        throw this.unavailable('OCR_INVALID_CREDENTIALS');
       }
     }
 
     if (this.configService.get<string>('GOOGLE_APPLICATION_CREDENTIALS')) {
-      this.visionClient = new ImageAnnotatorClient();
-      return this.visionClient;
+      try {
+        this.visionClient = new ImageAnnotatorClient();
+        return this.visionClient;
+      } catch {
+        throw this.unavailable('OCR_INVALID_CREDENTIALS');
+      }
     }
 
-    this.logger.warn(
-      'Google Vision 인증정보가 없습니다. .env.local에 GOOGLE_VISION_CREDENTIALS_BASE64를 설정해주세요.',
-    );
-    return null;
+    throw this.unavailable('OCR_NOT_CONFIGURED');
   }
 
   /**
