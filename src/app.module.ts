@@ -25,6 +25,8 @@ import { CommunityComment } from './community/entities/community-comment.entity'
 import { EmailVerification } from './auth/entities/email-verification.entity';
 import { minutes, ThrottlerModule } from '@nestjs/throttler';
 import { HealthModule } from './health/health.module';
+import { PushModule } from './push/push.module';
+import { PushSubscription } from './push/entities/push-subscription.entity';
 
 @Module({
   imports: [
@@ -70,6 +72,7 @@ import { HealthModule } from './health/health.module';
           CommunityPostLike,
           CommunityComment,
           EmailVerification,
+          PushSubscription,
         ],
         synchronize:
           configService.get<string>('NODE_ENV') !== 'production' &&
@@ -89,6 +92,7 @@ import { HealthModule } from './health/health.module';
     ReviewsModule, // 추가 (후기)
     SettlementsModule, // 정산
     CommunityModule, // 커뮤니티
+    PushModule,
   ],
   controllers: [],
   providers: [],

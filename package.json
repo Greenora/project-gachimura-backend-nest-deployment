@@ -25,7 +25,8 @@
     "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate src/database/migrations/Schema",
     "migration:run": "npm run typeorm -- migration:run",
-    "migration:revert": "npm run typeorm -- migration:revert"
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "migration:push": "node dist/database/run-push-migration.js"
   },
   "dependencies": {
     "@google-cloud/vision": "^6.0.0",
@@ -56,7 +57,8 @@
     "socket.io": "^4.8.3",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.20",
-    "unique-names-generator": "^4.7.1"
+    "unique-names-generator": "^4.7.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -72,6 +74,7 @@
     "@types/nodemailer": "^8.0.0",
     "@types/qs": "^6.14.0",
     "@types/supertest": "^6.0.2",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
