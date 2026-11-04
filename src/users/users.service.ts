@@ -62,7 +62,7 @@ export class UsersService {
 
   // 이메일 회원가입 (비밀번호 bcrypt 암호화, 닉네임 랜덤 생성)
   async signUp(createUserDto: CreateUserDto): Promise<void> {
-    const { email, password, nickname } = createUserDto;
+    const { email, password, nickname, phone, birthdate } = createUserDto;
 
     let hashedPassword: string | null = null;
 
@@ -87,6 +87,8 @@ export class UsersService {
       password: hashedPassword,
       nickname: finalNickname,
       nickname_jp: finalNicknameJp,
+      phoneNumber: phone ?? null,
+      birthDate: birthdate ?? null,
     });
 
     try {
@@ -293,6 +295,8 @@ export class UsersService {
   async updateLocation(userId: number, data: UpdateProfileDto) {
     const updateFields: Partial<User> = {};
 
+    if (data.phone !== undefined) updateFields.phoneNumber = data.phone;
+    if (data.birthdate !== undefined) updateFields.birthDate = data.birthdate;
     if (data.latitude !== undefined) updateFields.latitude = data.latitude;
     if (data.longitude !== undefined) updateFields.longitude = data.longitude;
     if (data.region !== undefined) updateFields.region = data.region;

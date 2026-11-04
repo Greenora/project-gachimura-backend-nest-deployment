@@ -12,6 +12,7 @@ describe('toPublicUser', () => {
       nickname_jp: 'テスト',
       profileImage: null,
       phoneNumber: '01000000000',
+      birthDate: new Date(1998, 0, 1),
       bankName: '테스트은행',
       accountNumber: '123456789',
       treeScore: 50,
@@ -32,5 +33,9 @@ describe('toPublicUser', () => {
     expect(result).not.toHaveProperty('password');
     expect(result).not.toHaveProperty('refreshToken');
     expect(result).not.toHaveProperty('accountNumber');
+    expect(result).not.toHaveProperty('phoneNumber');
+    expect(result).not.toHaveProperty('phone');
+    expect(result).not.toHaveProperty('birthDate');
+    expect(result).not.toHaveProperty('birthdate');
   });
 });
