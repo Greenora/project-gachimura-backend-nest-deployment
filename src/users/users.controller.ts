@@ -21,6 +21,7 @@ import {
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { toPublicUser } from './user-response.mapper';
+import { formatBirthDate, normalizePhone } from '../common/member-details';
 
 // 유저 정보 조회 API
 @ApiTags('Users')
@@ -65,6 +66,8 @@ export class UsersController {
       email: user.email,
       nickname: user.nickname,
       nickname_jp: user.nickname_jp,
+      phone: normalizePhone(user.phoneNumber ?? null),
+      birthdate: formatBirthDate(user.birthDate),
       profileImage: user.profileImage,
       provider: user.provider,
       treeScore: user.treeScore,

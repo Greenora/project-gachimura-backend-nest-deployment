@@ -113,7 +113,7 @@ describe('HTTP cookie session contract', () => {
         `language=ko; ${cookies.map((cookie) => cookie.split(';')[0]).join('; ')}`,
       )
       .expect(200)
-      .expect(user);
+      .expect({ ...user, phone: null, birthdate: null });
     await request(app.getHttpServer())
       .get('/api/users/profile')
       .set('Authorization', `Bearer ${accessToken}`)
