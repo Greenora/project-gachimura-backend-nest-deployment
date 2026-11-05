@@ -98,32 +98,21 @@ describe('SettlementsService', () => {
   });
 
   it('정산 hostId가 파티 hostId와 달라도 현재 파티 호스트의 품목 수정을 허용하고 보정한다', async () => {
-    const updateSettlement = jest.fn().mockResolvedValue({ affected: 1 });
+    const settlement = {
+      id: 8,
+      partyId: 9,
+      hostId: 1,
+      status: 'DRAFT',
+      host: { id: 2, nickname: '현재 호스트' },
+      items: [],
+    };
+    const updateSettlement = jest.fn();
     const settlementRepository = {
-      findOne: jest
-        .fn()
-        .mockResolvedValueOnce({
-          id: 8,
-          partyId: 9,
-          hostId: 1,
-          status: 'DRAFT',
-        })
-        .mockResolvedValueOnce({
-          id: 8,
-          partyId: 9,
-          hostId: 2,
-        })
-        .mockResolvedValueOnce({
-          id: 8,
-          partyId: 9,
-          hostId: 2,
-          host: { id: 2, nickname: '현재 호스트' },
-          items: [],
-        }),
+      findOne: jest.fn().mockResolvedValue(settlement),
       update: updateSettlement,
     } as unknown as Repository<Settlement>;
     const itemRepository = {
-      create: jest.fn((item) => item),
+      create: jest.fn((item: Partial<SettlementItem>) => item),
     } as unknown as Repository<SettlementItem>;
     const partyRepository = {
       findOne: jest
@@ -138,9 +127,17 @@ describe('SettlementsService', () => {
       rollbackTransaction: jest.fn(),
       release: jest.fn(),
       manager: {
+        findOne: jest.fn((entity: unknown) =>
+          Promise.resolve(entity === Party ? { id: 9, hostId: 2 } : settlement),
+        ),
         delete: jest.fn(),
         save: jest.fn(),
-        update: jest.fn(),
+        update: jest.fn(
+          (_entity: unknown, _id: unknown, values: Partial<Settlement>) => {
+            Object.assign(settlement, values);
+            return Promise.resolve({ affected: 1 });
+          },
+        ),
       },
     };
     const dataSource = {
@@ -161,7 +158,14 @@ describe('SettlementsService', () => {
       items: [{ name: '우유', price: 1000, quantity: 1 }],
     });
 
-    expect(updateSettlement).toHaveBeenCalledWith(8, { hostId: 2 });
+    expect(updateSettlement).not.toHaveBeenCalled();
+    expect(queryRunner.manager.update).toHaveBeenCalledWith(Settlement, 8, {
+      hostId: 2,
+    });
+    expect(queryRunner.manager.findOne).toHaveBeenCalledWith(Settlement, {
+      where: { id: 8 },
+      lock: { mode: 'pessimistic_write' },
+    });
     expect(queryRunner.manager.save).toHaveBeenCalledWith({
       settlementId: 8,
       name: '우유',

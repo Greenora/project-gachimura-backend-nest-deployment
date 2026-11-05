@@ -37,7 +37,9 @@ function scenario(items: ReturnType<typeof item>[]) {
     update: jest.fn(),
   };
   const memberRepository = {
-    findOne: jest.fn().mockResolvedValue({ userId: 2, status: 'APPROVED' }),
+    findOne: jest
+      .fn<Promise<Partial<PartyMember> | null>, []>()
+      .mockResolvedValue({ userId: 2, status: 'APPROVED' }),
   };
   const itemRepository = { find: jest.fn() };
   const paymentRepository = {
@@ -50,6 +52,14 @@ function scenario(items: ReturnType<typeof item>[]) {
     rollbackTransaction: jest.fn(),
     release: jest.fn(),
     manager: {
+      findOne: jest.fn((entity: unknown) => {
+        if (entity === Settlement) return Promise.resolve(settlement);
+        if (entity === Party) return Promise.resolve({ id: 9, hostId: 1 });
+        return memberRepository.findOne();
+      }),
+      find: jest.fn((entity: unknown) =>
+        Promise.resolve(entity === SettlementItem ? items : []),
+      ),
       save: jest.fn((value: Partial<SettlementPayment>) =>
         Promise.resolve(value),
       ),
@@ -202,7 +212,8 @@ describe('정산 확정 금액 배분', () => {
         BadRequestException,
       );
 
-      expect(fixture.dataSource.createQueryRunner).not.toHaveBeenCalled();
+      expect(fixture.queryRunner.manager.update).not.toHaveBeenCalled();
+      expect(fixture.queryRunner.manager.save).not.toHaveBeenCalled();
       expect(fixture.settlementRepository.update).not.toHaveBeenCalled();
       expect(fixture.payments()).toEqual([]);
       expect(fixture.settlement.status).toBe('SELECTING');
@@ -245,7 +256,10 @@ describe('정산 확정 금액 배분', () => {
       new Error('chat failed'),
     );
 
-    await expect(fixture.service.confirm(8, 1)).rejects.toThrow('chat failed');
+    await expect(fixture.service.confirm(8, 1)).resolves.toHaveProperty(
+      'status',
+      'CONFIRMED',
+    );
 
     expect(fixture.queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
     expect(fixture.queryRunner.rollbackTransaction).not.toHaveBeenCalled();
@@ -262,7 +276,7 @@ describe('정산 확정 금액 배분', () => {
 
     expect(fixture.payments()).toHaveLength(2);
     expect(fixture.chatGateway.sendSystemMessage).toHaveBeenCalledTimes(2);
-    expect(fixture.dataSource.createQueryRunner).toHaveBeenCalledTimes(1);
+    expect(fixture.dataSource.createQueryRunner).toHaveBeenCalledTimes(2);
   });
 
   it('비방장의 확정은 기존 권한 검사로 거부한다', async () => {
@@ -272,7 +286,8 @@ describe('정산 확정 금액 배분', () => {
       ForbiddenException,
     );
 
-    expect(fixture.dataSource.createQueryRunner).not.toHaveBeenCalled();
+    expect(fixture.queryRunner.manager.update).not.toHaveBeenCalled();
+    expect(fixture.queryRunner.manager.save).not.toHaveBeenCalled();
   });
 
   it('비회원의 선택과 중복 품목 선택은 기존 검사로 거부한다', async () => {
@@ -281,11 +296,11 @@ describe('정산 확정 금액 배분', () => {
     await expect(
       fixture.service.selectItems(8, 3, { itemIds: [1] }),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    fixture.itemRepository.find.mockResolvedValueOnce([{ id: 1 }]);
     await expect(
       fixture.service.selectItems(8, 2, { itemIds: [1, 1] }),
     ).rejects.toBeInstanceOf(BadRequestException);
 
-    expect(fixture.dataSource.createQueryRunner).not.toHaveBeenCalled();
+    expect(fixture.queryRunner.manager.update).not.toHaveBeenCalled();
+    expect(fixture.queryRunner.manager.save).not.toHaveBeenCalled();
   });
 });
