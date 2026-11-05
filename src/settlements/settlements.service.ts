@@ -391,66 +391,84 @@ export class SettlementsService {
     if (settlement.status !== 'SELECTING') {
       throw new BadRequestException('확정 가능한 상태가 아닙니다.');
     }
+    if (!settlement.items.length) {
+      throw new BadRequestException('정산할 품목이 없습니다.');
+    }
 
     // 멤버별 금액 계산
     const memberAmounts: Record<number, number> = {};
 
     for (const item of settlement.items) {
-      if (!item.members || item.members.length === 0) continue;
-      const perPerson = Math.ceil(
-        (item.price * item.quantity) / item.members.length,
-      );
-      for (const member of item.members) {
+      if (!item.members || item.members.length === 0) {
+        throw new BadRequestException(
+          '선택한 사람이 없는 품목이 있습니다. 모든 품목의 참여자를 선택해주세요.',
+        );
+      }
+      const members = [...item.members].sort((a, b) => a.userId - b.userId);
+      const total = item.price * item.quantity;
+      const perPerson = Math.floor(total / members.length);
+      const remainder = total % members.length;
+      for (const [index, member] of members.entries()) {
         memberAmounts[member.userId] =
-          (memberAmounts[member.userId] || 0) + perPerson;
+          (memberAmounts[member.userId] || 0) +
+          perPerson +
+          (index < remainder ? 1 : 0);
       }
     }
+    const guestAmounts = Object.entries(memberAmounts).filter(
+      ([userId]) => Number(userId) !== hostId,
+    );
+    const completed = guestAmounts.every(([, amount]) => amount === 0);
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 결제 정보 저장
-      for (const [userIdStr, info] of Object.entries(memberAmounts)) {
-        const uid = Number(userIdStr);
-        // 호스트 본인은 건너뛰기
-        if (uid === hostId) continue;
+      const updateResult = await queryRunner.manager.update(
+        Settlement,
+        { id: settlementId, status: 'SELECTING' },
+        { status: completed ? 'COMPLETED' : 'CONFIRMED' },
+      );
+      if (!updateResult.affected) {
+        throw new BadRequestException('이미 확정된 정산입니다.');
+      }
 
+      // 결제 정보 저장
+      for (const [userId, amount] of guestAmounts) {
         const payment = this.paymentRepository.create({
           settlementId,
-          userId: uid,
-          amount: info,
-          status: 'PENDING',
+          userId: Number(userId),
+          amount,
+          status: amount === 0 ? 'PAID' : 'PENDING',
         });
         await queryRunner.manager.save(payment);
       }
 
-      // 상태 업데이트
-      await queryRunner.manager.update(Settlement, settlementId, {
-        status: 'CONFIRMED',
-      });
-
       await queryRunner.commitTransaction();
-
-      // 채팅방에 언어 중립 토큰 메시지 전송
-      const detailParts = Object.entries(memberAmounts)
-        .filter(([userIdStr]) => Number(userIdStr) !== hostId)
-        .map(([userIdStr, amount]) => `${userIdStr}:${amount}`)
-        .join(',');
-
-      await this.chatGateway.sendSystemMessage(
-        settlement.partyId,
-        `__SYS__|SETTLEMENT_CONFIRMED|${settlement.totalAmount}|${detailParts}`,
-      );
-
-      return this.findOne(settlementId, hostId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
     }
+
+    // 채팅 전송 실패가 이미 커밋한 정산을 롤백하지 않도록 분리한다.
+    const detailParts = guestAmounts
+      .map(([userId, amount]) => `${userId}:${amount}`)
+      .join(',');
+    await this.chatGateway.sendSystemMessage(
+      settlement.partyId,
+      `__SYS__|SETTLEMENT_CONFIRMED|${settlement.totalAmount}|${detailParts}`,
+    );
+    if (completed) {
+      await this.chatGateway.sendSystemMessage(
+        settlement.partyId,
+        '🎉 모든 정산이 완료되었습니다!',
+      );
+    }
+
+    return this.findOne(settlementId, hostId);
   }
 
   // 입금 확인 처리 (호스트)
