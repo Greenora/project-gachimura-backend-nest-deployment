@@ -3,9 +3,10 @@ import {
   BadRequestException,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { Settlement } from './entities/settlement.entity';
 import { SettlementItem } from './entities/settlement-item.entity';
 import { SettlementItemMember } from './entities/settlement-item-member.entity';
@@ -19,6 +20,8 @@ import { toPublicUser } from '../users/user-response.mapper';
 
 @Injectable()
 export class SettlementsService {
+  private readonly logger = new Logger(SettlementsService.name);
+
   constructor(
     @InjectRepository(Settlement)
     private settlementRepository: Repository<Settlement>,
@@ -50,10 +53,14 @@ export class SettlementsService {
     };
   }
 
-  private async ensurePartyAccess(partyId: number, userId: number) {
-    const party = await this.partyRepository.findOne({
-      where: { id: partyId },
-    });
+  private async ensurePartyAccess(
+    partyId: number,
+    userId: number,
+    manager?: EntityManager,
+  ) {
+    const party = manager
+      ? await manager.findOne(Party, { where: { id: partyId } })
+      : await this.partyRepository.findOne({ where: { id: partyId } });
     if (!party) {
       throw new NotFoundException('모임을 찾을 수 없습니다.');
     }
@@ -61,9 +68,10 @@ export class SettlementsService {
       return;
     }
 
-    const member = await this.memberRepository.findOne({
-      where: { partyId, userId, status: 'APPROVED' },
-    });
+    const where = { partyId, userId, status: 'APPROVED' };
+    const member = manager
+      ? await manager.findOne(PartyMember, { where })
+      : await this.memberRepository.findOne({ where });
     if (!member) {
       throw new ForbiddenException('이 모임의 정산을 조회할 권한이 없습니다.');
     }
@@ -83,8 +91,9 @@ export class SettlementsService {
     settlement: Settlement,
     userId: number,
     message: string,
+    manager: EntityManager,
   ) {
-    const party = await this.partyRepository.findOne({
+    const party = await manager.findOne(Party, {
       where: { id: settlement.partyId },
     });
     if (!party) {
@@ -95,10 +104,29 @@ export class SettlementsService {
     }
 
     if (settlement.hostId !== party.hostId) {
-      await this.settlementRepository.update(settlement.id, {
+      await manager.update(Settlement, settlement.id, {
         hostId: party.hostId,
       });
       settlement.hostId = party.hostId;
+    }
+  }
+
+  private async lockedSettlement(manager: EntityManager, settlementId: number) {
+    const settlement = await manager.findOne(Settlement, {
+      where: { id: settlementId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!settlement) {
+      throw new NotFoundException('정산을 찾을 수 없습니다.');
+    }
+    return settlement;
+  }
+
+  private async sendSystemMessage(partyId: number, message: string) {
+    try {
+      await this.chatGateway.sendSystemMessage(partyId, message);
+    } catch {
+      this.logger.warn('정산 시스템 메시지를 전송하지 못했습니다.');
     }
   }
 
@@ -174,26 +202,25 @@ export class SettlementsService {
     hostId: number,
     dto: UpdateSettlementItemsDto,
   ) {
-    const settlement = await this.settlementRepository.findOne({
-      where: { id: settlementId },
-    });
-    if (!settlement) {
-      throw new NotFoundException('정산을 찾을 수 없습니다.');
-    }
-    await this.ensureSettlementHost(
-      settlement,
-      hostId,
-      '호스트만 품목을 수정할 수 있습니다.',
-    );
-    if (settlement.status !== 'DRAFT') {
-      throw new BadRequestException('수정 가능한 상태가 아닙니다.');
-    }
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
+      const settlement = await this.lockedSettlement(
+        queryRunner.manager,
+        settlementId,
+      );
+      await this.ensureSettlementHost(
+        settlement,
+        hostId,
+        '호스트만 품목을 수정할 수 있습니다.',
+        queryRunner.manager,
+      );
+      if (settlement.status !== 'DRAFT') {
+        throw new BadRequestException('수정 가능한 상태가 아닙니다.');
+      }
+
       // 기존 품목 삭제
       await queryRunner.manager.delete(SettlementItem, {
         settlementId,
@@ -218,14 +245,13 @@ export class SettlementsService {
       });
 
       await queryRunner.commitTransaction();
-
-      return this.findOne(settlementId, hostId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
     }
+    return this.findOne(settlementId, hostId);
   }
 
   // 정산 시작하기 (DRAFT → SELECTING, 멤버들에게 알림)
@@ -234,123 +260,140 @@ export class SettlementsService {
     hostId: number,
     resumedFromEdit = false,
   ) {
-    const settlement = await this.settlementRepository.findOne({
-      where: { id: settlementId },
-      relations: ['items'],
-    });
-    if (!settlement) {
-      throw new NotFoundException('정산을 찾을 수 없습니다.');
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let partyId = 0;
+    let changed = false;
+    try {
+      const settlement = await this.lockedSettlement(
+        queryRunner.manager,
+        settlementId,
+      );
+      await this.ensureSettlementHost(
+        settlement,
+        hostId,
+        '호스트만 정산을 시작할 수 있습니다.',
+        queryRunner.manager,
+      );
+      if (settlement.status !== 'DRAFT' && settlement.status !== 'SELECTING') {
+        throw new BadRequestException('이미 시작된 정산입니다.');
+      }
+      const items = await queryRunner.manager.find(SettlementItem, {
+        where: { settlementId },
+      });
+      if (!items.length) {
+        throw new BadRequestException('품목을 먼저 등록해주세요.');
+      }
+      partyId = settlement.partyId;
+      if (settlement.status === 'DRAFT') {
+        await queryRunner.manager.update(Settlement, settlementId, {
+          status: 'SELECTING',
+        });
+        changed = true;
+      }
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
-    await this.ensureSettlementHost(
-      settlement,
-      hostId,
-      '호스트만 정산을 시작할 수 있습니다.',
-    );
-    if (settlement.status !== 'DRAFT' && settlement.status !== 'SELECTING') {
-      throw new BadRequestException('이미 시작된 정산입니다.');
-    }
-    if (!settlement.items || settlement.items.length === 0) {
-      throw new BadRequestException('품목을 먼저 등록해주세요.');
-    }
-
-    const updateResult = await this.settlementRepository.update(
-      { id: settlementId, status: 'DRAFT' },
-      { status: 'SELECTING' },
-    );
-
-    // 상태가 실제로 전환된 경우에만 시스템 메시지 1회 전송
-    if (updateResult.affected && updateResult.affected > 0) {
-      await this.chatGateway.sendSystemMessage(
-        settlement.partyId,
+    if (changed) {
+      await this.sendSystemMessage(
+        partyId,
         resumedFromEdit
           ? '__SYS__|SETTLEMENT_RESUMED'
           : '__SYS__|SETTLEMENT_START',
       );
     }
-
     return this.findOne(settlementId, hostId);
   }
 
   // 호스트: SELECTING → DRAFT 되돌리기 (품목 수정 가능)
   async revertToDraft(settlementId: number, hostId: number) {
-    const settlement = await this.settlementRepository.findOne({
-      where: { id: settlementId },
-      relations: ['items'],
-    });
-    if (!settlement) {
-      throw new NotFoundException('정산을 찾을 수 없습니다.');
-    }
-    await this.ensureSettlementHost(
-      settlement,
-      hostId,
-      '호스트만 수정할 수 있습니다.',
-    );
-    if (settlement.status !== 'SELECTING' && settlement.status !== 'DRAFT') {
-      throw new BadRequestException('수정 가능한 상태가 아닙니다.');
-    }
-
-    const updateResult = await this.settlementRepository.update(
-      { id: settlementId, status: 'SELECTING' },
-      { status: 'DRAFT' },
-    );
-
-    if (updateResult.affected && updateResult.affected > 0) {
-      // 상태가 실제로 바뀐 경우에만 선택 내역 삭제 및 메시지 전송
-      for (const item of settlement.items) {
-        await this.itemMemberRepository.delete({ itemId: item.id });
-      }
-
-      await this.chatGateway.sendSystemMessage(
-        settlement.partyId,
-        '__SYS__|SETTLEMENT_EDITING',
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let partyId = 0;
+    let changed = false;
+    try {
+      const settlement = await this.lockedSettlement(
+        queryRunner.manager,
+        settlementId,
       );
+      await this.ensureSettlementHost(
+        settlement,
+        hostId,
+        '호스트만 수정할 수 있습니다.',
+        queryRunner.manager,
+      );
+      if (settlement.status !== 'SELECTING' && settlement.status !== 'DRAFT') {
+        throw new BadRequestException('수정 가능한 상태가 아닙니다.');
+      }
+      partyId = settlement.partyId;
+      if (settlement.status === 'SELECTING') {
+        const items = await queryRunner.manager.find(SettlementItem, {
+          where: { settlementId },
+        });
+        if (items.length) {
+          await queryRunner.manager.delete(SettlementItemMember, {
+            itemId: In(items.map((item) => item.id)),
+          });
+        }
+        await queryRunner.manager.update(Settlement, settlementId, {
+          status: 'DRAFT',
+        });
+        changed = true;
+      }
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
     }
-
+    if (changed) {
+      await this.sendSystemMessage(partyId, '__SYS__|SETTLEMENT_EDITING');
+    }
     return this.findOne(settlementId, hostId);
   }
 
-  // 게스트: 본인 참여 항목 선택
+  // 멤버: 본인 참여 항목 선택
   async selectItems(settlementId: number, userId: number, dto: SelectItemsDto) {
-    const settlement = await this.settlementRepository.findOne({
-      where: { id: settlementId },
-    });
-    if (!settlement) {
-      throw new NotFoundException('정산을 찾을 수 없습니다.');
-    }
-    if (settlement.status !== 'SELECTING') {
-      throw new BadRequestException('항목 선택 기간이 아닙니다.');
-    }
-
-    // 멤버 자격 확인
-    const member = await this.memberRepository.findOne({
-      where: {
-        partyId: settlement.partyId,
-        userId,
-        status: 'APPROVED',
-      },
-    });
-    if (!member) {
-      throw new ForbiddenException('이 모임의 멤버가 아닙니다.');
-    }
-
-    // 품목 존재 확인
-    const items = await this.itemRepository.find({
-      where: { settlementId, id: In(dto.itemIds) },
-    });
-    if (items.length !== dto.itemIds.length) {
-      throw new BadRequestException('유효하지 않은 품목이 포함되어 있습니다.');
-    }
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      // 기존 선택 삭제
-      const existingSelections = await this.itemMemberRepository.find({
-        where: { userId, item: { settlementId } },
-        relations: ['item'],
+      const settlement = await this.lockedSettlement(
+        queryRunner.manager,
+        settlementId,
+      );
+      await this.ensurePartyAccess(
+        settlement.partyId,
+        userId,
+        queryRunner.manager,
+      );
+      if (settlement.status !== 'SELECTING') {
+        throw new BadRequestException('항목 선택 기간이 아닙니다.');
+      }
+      const items = await queryRunner.manager.find(SettlementItem, {
+        where: { settlementId, id: In(dto.itemIds) },
       });
+      if (items.length !== dto.itemIds.length) {
+        throw new BadRequestException(
+          '유효하지 않은 품목이 포함되어 있습니다.',
+        );
+      }
+      // 기존 선택 삭제
+      const existingSelections = await queryRunner.manager.find(
+        SettlementItemMember,
+        {
+          where: { userId, item: { settlementId } },
+          relations: ['item'],
+        },
+      );
       if (existingSelections.length > 0) {
         await queryRunner.manager.remove(existingSelections);
       }
@@ -365,92 +408,112 @@ export class SettlementsService {
       }
 
       await queryRunner.commitTransaction();
-      return this.findOne(settlementId, userId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
     }
+    return this.findOne(settlementId, userId);
   }
 
   // 호스트: 최종 확정 → 1/N 계산 → 채팅방에 메시지 전송
   async confirm(settlementId: number, hostId: number) {
-    const settlement = await this.settlementRepository.findOne({
-      where: { id: settlementId },
-      relations: ['items', 'items.members', 'items.members.user', 'party'],
-    });
-    if (!settlement) {
-      throw new NotFoundException('정산을 찾을 수 없습니다.');
-    }
-    await this.ensureSettlementHost(
-      settlement,
-      hostId,
-      '호스트만 정산을 확정할 수 있습니다.',
-    );
-    if (settlement.status !== 'SELECTING') {
-      throw new BadRequestException('확정 가능한 상태가 아닙니다.');
-    }
-
-    // 멤버별 금액 계산
-    const memberAmounts: Record<number, number> = {};
-
-    for (const item of settlement.items) {
-      if (!item.members || item.members.length === 0) continue;
-      const perPerson = Math.ceil(
-        (item.price * item.quantity) / item.members.length,
-      );
-      for (const member of item.members) {
-        memberAmounts[member.userId] =
-          (memberAmounts[member.userId] || 0) + perPerson;
-      }
-    }
-
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+    let guestAmounts: [string, number][] = [];
+    let completed = false;
+    let partyId = 0;
+    let totalAmount = 0;
 
     try {
-      // 결제 정보 저장
-      for (const [userIdStr, info] of Object.entries(memberAmounts)) {
-        const uid = Number(userIdStr);
-        // 호스트 본인은 건너뛰기
-        if (uid === hostId) continue;
+      const settlement = await this.lockedSettlement(
+        queryRunner.manager,
+        settlementId,
+      );
+      await this.ensureSettlementHost(
+        settlement,
+        hostId,
+        '호스트만 정산을 확정할 수 있습니다.',
+        queryRunner.manager,
+      );
+      if (settlement.status !== 'SELECTING') {
+        throw new BadRequestException('확정 가능한 상태가 아닙니다.');
+      }
+      const items = await queryRunner.manager.find(SettlementItem, {
+        where: { settlementId },
+        relations: ['members'],
+      });
+      if (!items.length) {
+        throw new BadRequestException('정산할 품목이 없습니다.');
+      }
+      const memberAmounts: Record<number, number> = {};
+      for (const item of items) {
+        if (!item.members || item.members.length === 0) {
+          throw new BadRequestException(
+            '선택한 사람이 없는 품목이 있습니다. 모든 품목의 참여자를 선택해주세요.',
+          );
+        }
+        const members = [...item.members].sort((a, b) => a.userId - b.userId);
+        const total = item.price * item.quantity;
+        const perPerson = Math.floor(total / members.length);
+        const remainder = total % members.length;
+        for (const [index, member] of members.entries()) {
+          memberAmounts[member.userId] =
+            (memberAmounts[member.userId] || 0) +
+            perPerson +
+            (index < remainder ? 1 : 0);
+        }
+      }
+      guestAmounts = Object.entries(memberAmounts).filter(
+        ([userId]) => Number(userId) !== hostId,
+      );
+      completed = guestAmounts.every(([, amount]) => amount === 0);
+      partyId = settlement.partyId;
+      totalAmount = settlement.totalAmount;
 
+      const updateResult = await queryRunner.manager.update(
+        Settlement,
+        { id: settlementId, status: 'SELECTING' },
+        { status: completed ? 'COMPLETED' : 'CONFIRMED' },
+      );
+      if (!updateResult.affected) {
+        throw new BadRequestException('이미 확정된 정산입니다.');
+      }
+
+      // 결제 정보 저장
+      for (const [userId, amount] of guestAmounts) {
         const payment = this.paymentRepository.create({
           settlementId,
-          userId: uid,
-          amount: info,
-          status: 'PENDING',
+          userId: Number(userId),
+          amount,
+          status: amount === 0 ? 'PAID' : 'PENDING',
         });
         await queryRunner.manager.save(payment);
       }
 
-      // 상태 업데이트
-      await queryRunner.manager.update(Settlement, settlementId, {
-        status: 'CONFIRMED',
-      });
-
       await queryRunner.commitTransaction();
-
-      // 채팅방에 언어 중립 토큰 메시지 전송
-      const detailParts = Object.entries(memberAmounts)
-        .filter(([userIdStr]) => Number(userIdStr) !== hostId)
-        .map(([userIdStr, amount]) => `${userIdStr}:${amount}`)
-        .join(',');
-
-      await this.chatGateway.sendSystemMessage(
-        settlement.partyId,
-        `__SYS__|SETTLEMENT_CONFIRMED|${settlement.totalAmount}|${detailParts}`,
-      );
-
-      return this.findOne(settlementId, hostId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
     }
+
+    // 채팅 전송 실패가 이미 커밋한 정산을 롤백하지 않도록 분리한다.
+    const detailParts = guestAmounts
+      .map(([userId, amount]) => `${userId}:${amount}`)
+      .join(',');
+    await this.sendSystemMessage(
+      partyId,
+      `__SYS__|SETTLEMENT_CONFIRMED|${totalAmount}|${detailParts}`,
+    );
+    if (completed) {
+      await this.sendSystemMessage(partyId, '🎉 모든 정산이 완료되었습니다!');
+    }
+
+    return this.findOne(settlementId, hostId);
   }
 
   // 입금 확인 처리 (호스트)
@@ -460,52 +523,77 @@ export class SettlementsService {
     userId: number,
     status: string,
   ) {
-    const settlement = await this.settlementRepository.findOne({
-      where: { id: settlementId },
-    });
-    if (!settlement) {
-      throw new NotFoundException('정산을 찾을 수 없습니다.');
+    if (status !== 'PAID') {
+      throw new BadRequestException('입금 완료 확인만 요청할 수 있습니다.');
     }
-    await this.ensureSettlementHost(
-      settlement,
-      hostId,
-      '호스트만 입금 확인을 할 수 있습니다.',
-    );
-
-    const payment = await this.paymentRepository.findOne({
-      where: { settlementId, userId },
-      relations: ['user'],
-    });
-    if (!payment) {
-      throw new NotFoundException('결제 정보를 찾을 수 없습니다.');
-    }
-
-    payment.status = status;
-    await this.paymentRepository.save(payment);
-
-    if (status === 'PAID') {
-      const nickname = payment.user?.nickname || '알 수 없음';
-      await this.chatGateway.sendSystemMessage(
-        settlement.partyId,
-        `✅ ${nickname}님의 입금이 확인되었습니다.`,
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    let payment!: SettlementPayment;
+    let partyId = 0;
+    let changed = false;
+    let completed = false;
+    try {
+      const settlement = await this.lockedSettlement(
+        queryRunner.manager,
+        settlementId,
       );
-
-      // 모든 입금이 완료되었는지 확인
-      const allPayments = await this.paymentRepository.find({
-        where: { settlementId },
+      await this.ensureSettlementHost(
+        settlement,
+        hostId,
+        '호스트만 입금 확인을 할 수 있습니다.',
+        queryRunner.manager,
+      );
+      if (
+        settlement.status !== 'CONFIRMED' &&
+        settlement.status !== 'COMPLETED'
+      ) {
+        throw new BadRequestException('입금을 확인할 수 있는 정산이 아닙니다.');
+      }
+      const existing = await queryRunner.manager.findOne(SettlementPayment, {
+        where: { settlementId, userId },
+        relations: ['user'],
       });
-      const allPaid = allPayments.every((p) => p.status === 'PAID');
-      if (allPaid) {
-        await this.settlementRepository.update(settlementId, {
-          status: 'COMPLETED',
+      if (!existing) {
+        throw new NotFoundException('결제 정보를 찾을 수 없습니다.');
+      }
+      payment = existing;
+      partyId = settlement.partyId;
+      if (payment.status !== 'PAID') {
+        if (settlement.status !== 'CONFIRMED' || payment.status !== 'PENDING') {
+          throw new BadRequestException(
+            '입금을 확인할 수 있는 상태가 아닙니다.',
+          );
+        }
+        payment.status = 'PAID';
+        await queryRunner.manager.save(payment);
+        const allPayments = await queryRunner.manager.find(SettlementPayment, {
+          where: { settlementId },
         });
-        await this.chatGateway.sendSystemMessage(
-          settlement.partyId,
-          '🎉 모든 정산이 완료되었습니다!',
-        );
+        if (allPayments.every((value) => value.status === 'PAID')) {
+          await queryRunner.manager.update(Settlement, settlementId, {
+            status: 'COMPLETED',
+          });
+          completed = true;
+        }
+        changed = true;
+      }
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+    if (changed) {
+      await this.sendSystemMessage(
+        partyId,
+        `✅ ${payment.user?.nickname || '알 수 없음'}님의 입금이 확인되었습니다.`,
+      );
+      if (completed) {
+        await this.sendSystemMessage(partyId, '🎉 모든 정산이 완료되었습니다!');
       }
     }
-
     return {
       ...payment,
       user: toPublicUser(payment.user),
