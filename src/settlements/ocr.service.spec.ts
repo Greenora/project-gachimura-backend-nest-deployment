@@ -48,6 +48,7 @@ describe('OcrService failures', () => {
     expect(exception.getResponse()).toMatchObject({ code });
     expect(JSON.stringify(exception.getResponse())).not.toContain(privateValue);
     expect(JSON.stringify(errorLog.mock.calls)).not.toContain(privateValue);
+    return exception.getResponse();
   }
 
   beforeEach(() => {
@@ -110,9 +111,40 @@ describe('OcrService failures', () => {
     await expectFailure(service(), 'OCR_FILE_UNREADABLE');
     expect(detect).not.toHaveBeenCalled();
   });
-  it.each([7, 16])('reports provider auth failures (%s)', async (code) => {
+  it.each([
+    [7, 'PERMISSION_DENIED'],
+    [16, 'UNAUTHENTICATED'],
+  ])('reports provider auth failures (%s)', async (code, reason) => {
     detect.mockRejectedValue({ code, message: privateValue });
-    await expectFailure(service(), 'OCR_AUTH_FAILED');
+    expect(await expectFailure(service(), 'OCR_AUTH_FAILED')).toMatchObject({
+      reason,
+    });
+  });
+  it.each(['BILLING_DISABLED', 'SERVICE_DISABLED', 'IAM_PERMISSION_DENIED'])(
+    'keeps only the structured provider reason %s without metadata',
+    async (reason) => {
+      detect.mockRejectedValue({
+        code: 7,
+        reason,
+        message: privateValue,
+        errorInfoMetadata: { consumer: privateValue, service: privateValue },
+      });
+      expect(await expectFailure(service(), 'OCR_AUTH_FAILED')).toMatchObject({
+        reason,
+      });
+      expect(errorLog).toHaveBeenCalledWith(`OCR_AUTH_FAILED reason=${reason}`);
+    },
+  );
+  it('does not expose unknown provider reasons or inspect raw error text', async () => {
+    detect.mockRejectedValue({
+      code: 7,
+      reason: privateValue,
+      message: `SERVICE_DISABLED ${privateValue}`,
+      errorInfoMetadata: { reason: privateValue },
+    });
+    expect(await expectFailure(service(), 'OCR_AUTH_FAILED')).toMatchObject({
+      reason: 'PERMISSION_DENIED',
+    });
   });
   it.each([4, 14, 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET'])(
     'reports provider connection failures (%s)',

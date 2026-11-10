@@ -130,6 +130,14 @@ export class SettlementsService {
     }
   }
 
+  private notifyUpdated(partyId: number, settlementId: number) {
+    try {
+      this.chatGateway.notifySettlementUpdated(partyId, settlementId);
+    } catch {
+      this.logger.warn('정산 상태 갱신을 알리지 못했습니다.');
+    }
+  }
+
   // 정산 생성 (호스트 전용)
   async create(hostId: number, partyId: number) {
     const party = await this.partyRepository.findOne({
@@ -155,7 +163,9 @@ export class SettlementsService {
       hostId,
       status: 'DRAFT',
     });
-    return this.settlementRepository.save(settlement);
+    const saved = await this.settlementRepository.save(settlement);
+    this.notifyUpdated(partyId, saved.id);
+    return saved;
   }
 
   // 정산 상세 조회
@@ -205,6 +215,7 @@ export class SettlementsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+    let partyId = 0;
 
     try {
       const settlement = await this.lockedSettlement(
@@ -221,21 +232,50 @@ export class SettlementsService {
         throw new BadRequestException('수정 가능한 상태가 아닙니다.');
       }
 
-      // 기존 품목 삭제
-      await queryRunner.manager.delete(SettlementItem, {
-        settlementId,
+      const existingItems = await queryRunner.manager.find(SettlementItem, {
+        where: { settlementId },
       });
+      const existingIds = new Set(existingItems.map((item) => item.id));
+      const retainedIds = dto.items
+        .filter((item) => item.id !== undefined)
+        .map((item) => item.id as number);
+      if (
+        new Set(retainedIds).size !== retainedIds.length ||
+        retainedIds.some((id) => !Number.isInteger(id) || !existingIds.has(id))
+      ) {
+        throw new BadRequestException(
+          '변경되었거나 유효하지 않은 품목입니다. 새로 확인해주세요.',
+        );
+      }
+      const removedIds = existingItems
+        .filter((item) => !retainedIds.includes(item.id))
+        .map((item) => item.id);
+      if (removedIds.length) {
+        await queryRunner.manager.delete(SettlementItem, {
+          settlementId,
+          id: In(removedIds),
+        });
+      }
 
-      // 새 품목 저장
       let totalAmount = 0;
       for (const item of dto.items) {
-        const newItem = this.itemRepository.create({
-          settlementId,
+        const values = {
           name: item.name,
           price: item.price,
           quantity: item.quantity,
-        });
-        await queryRunner.manager.save(newItem);
+        };
+        // 기존 품목의 선택자는 유지하고, 삭제한 품목만 함께 지운다.
+        if (item.id !== undefined) {
+          await queryRunner.manager.update(
+            SettlementItem,
+            { id: item.id, settlementId },
+            values,
+          );
+        } else {
+          await queryRunner.manager.save(
+            this.itemRepository.create({ settlementId, ...values }),
+          );
+        }
         totalAmount += item.price * item.quantity;
       }
 
@@ -243,7 +283,7 @@ export class SettlementsService {
       await queryRunner.manager.update(Settlement, settlementId, {
         totalAmount,
       });
-
+      partyId = settlement.partyId;
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();
@@ -251,6 +291,7 @@ export class SettlementsService {
     } finally {
       await queryRunner.release();
     }
+    this.notifyUpdated(partyId, settlementId);
     return this.findOne(settlementId, hostId);
   }
 
@@ -300,6 +341,7 @@ export class SettlementsService {
       await queryRunner.release();
     }
     if (changed) {
+      this.notifyUpdated(partyId, settlementId);
       await this.sendSystemMessage(
         partyId,
         resumedFromEdit
@@ -333,14 +375,6 @@ export class SettlementsService {
       }
       partyId = settlement.partyId;
       if (settlement.status === 'SELECTING') {
-        const items = await queryRunner.manager.find(SettlementItem, {
-          where: { settlementId },
-        });
-        if (items.length) {
-          await queryRunner.manager.delete(SettlementItemMember, {
-            itemId: In(items.map((item) => item.id)),
-          });
-        }
         await queryRunner.manager.update(Settlement, settlementId, {
           status: 'DRAFT',
         });
@@ -354,6 +388,7 @@ export class SettlementsService {
       await queryRunner.release();
     }
     if (changed) {
+      this.notifyUpdated(partyId, settlementId);
       await this.sendSystemMessage(partyId, '__SYS__|SETTLEMENT_EDITING');
     }
     return this.findOne(settlementId, hostId);
@@ -364,6 +399,7 @@ export class SettlementsService {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+    let partyId = 0;
 
     try {
       const settlement = await this.lockedSettlement(
@@ -378,6 +414,7 @@ export class SettlementsService {
       if (settlement.status !== 'SELECTING') {
         throw new BadRequestException('항목 선택 기간이 아닙니다.');
       }
+      partyId = settlement.partyId;
       const items = await queryRunner.manager.find(SettlementItem, {
         where: { settlementId, id: In(dto.itemIds) },
       });
@@ -414,6 +451,7 @@ export class SettlementsService {
     } finally {
       await queryRunner.release();
     }
+    this.notifyUpdated(partyId, settlementId);
     return this.findOne(settlementId, userId);
   }
 
@@ -501,6 +539,7 @@ export class SettlementsService {
       await queryRunner.release();
     }
 
+    this.notifyUpdated(partyId, settlementId);
     // 채팅 전송 실패가 이미 커밋한 정산을 롤백하지 않도록 분리한다.
     const detailParts = guestAmounts
       .map(([userId, amount]) => `${userId}:${amount}`)
@@ -586,6 +625,7 @@ export class SettlementsService {
       await queryRunner.release();
     }
     if (changed) {
+      this.notifyUpdated(partyId, settlementId);
       await this.sendSystemMessage(
         partyId,
         `✅ ${payment.user?.nickname || '알 수 없음'}님의 입금이 확인되었습니다.`,

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, ILike } from 'typeorm';
@@ -10,15 +11,27 @@ import { PartyMember } from '../party-members/entities/party-member.entity';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
 import { toPublicUser } from '../users/user-response.mapper';
+import { ChatGateway } from '../chat/chat.gateway';
 
 @Injectable()
 export class PartiesService {
+  private readonly logger = new Logger(PartiesService.name);
+
   constructor(
     @InjectRepository(Party)
     private partyRepository: Repository<Party>,
     @InjectRepository(PartyMember)
     private partyMemberRepository: Repository<PartyMember>,
+    private chatGateway: ChatGateway,
   ) {}
+
+  private notifyUpdated(partyId: number) {
+    try {
+      this.chatGateway.notifyPartyUpdated(partyId);
+    } catch {
+      this.logger.warn('모임 상태 갱신을 알리지 못했습니다.');
+    }
+  }
 
   private toPublicParty(party: Party) {
     return {
@@ -273,6 +286,7 @@ export class PartiesService {
     });
 
     await this.partyMemberRepository.save(newMember);
+    this.notifyUpdated(partyId);
 
     return { message: '가입 신청이 완료되었습니다!' };
   }
@@ -290,6 +304,8 @@ export class PartiesService {
     }
 
     party.status = status;
-    return this.partyRepository.save(party);
+    const saved = await this.partyRepository.save(party);
+    this.notifyUpdated(partyId);
+    return saved;
   }
 }

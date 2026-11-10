@@ -1,6 +1,6 @@
 import {
   IsString,
-  IsNumber,
+  IsInt,
   IsArray,
   ValidateNested,
   IsOptional,
@@ -10,17 +10,23 @@ import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class SettlementItemDto {
+  @ApiProperty({ description: '기존 품목 ID', required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  id?: number;
+
   @ApiProperty({ description: '품목명', example: '서울우유 120ml' })
   @IsString()
   name: string;
 
   @ApiProperty({ description: '가격 (원)', example: 800 })
-  @IsNumber()
+  @IsInt()
   @Min(0)
   price: number;
 
   @ApiProperty({ description: '수량', example: 1 })
-  @IsNumber()
+  @IsInt()
   @Min(1)
   quantity: number;
 }

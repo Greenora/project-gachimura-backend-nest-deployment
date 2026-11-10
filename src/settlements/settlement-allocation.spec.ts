@@ -72,6 +72,7 @@ function scenario(items: ReturnType<typeof item>[]) {
   const dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
   const chatGateway = {
     sendSystemMessage: jest.fn<Promise<void>, [number, string]>(),
+    notifySettlementUpdated: jest.fn(),
   };
   const service = new SettlementsService(
     settlementRepository as unknown as Repository<Settlement>,

@@ -46,6 +46,7 @@ async function main() {
     synchronize: false, extra: { connectionLimit: 6 },
   });
   const messages = [];
+  const updates = [];
   let failMessages = false;
   let warningCount = 0;
   let originalRunner;
@@ -58,7 +59,7 @@ async function main() {
     const service = new SettlementsService(
       repo(Settlement), repo(SettlementItem), repo(SettlementItemMember), repo(SettlementPayment),
       repo(Party), repo(PartyMember), source,
-      { sendSystemMessage: async (partyId, message) => {
+      { notifySettlementUpdated: (partyId, settlementId) => updates.push({ partyId, settlementId }), sendSystemMessage: async (partyId, message) => {
         if (failMessages) throw new Error('fixture chat unavailable');
         messages.push({ partyId, message });
       } },
@@ -82,6 +83,7 @@ async function main() {
     }
 
     const basic = await flow();
+    assert.ok(updates.some(update => update.partyId === basic.partyId && update.settlementId === basic.id));
     await service.selectItems(basic.id, 2, { itemIds: [] });
     const cleared = await service.findOne(basic.id, 1);
     assert.deepEqual(cleared.items[0].members.map(value => value.userId).sort(), [1, 3]);
@@ -103,6 +105,27 @@ async function main() {
     await rejectsStatus(service.updatePayment(basic.id, 2, 2, 'PAID'), 403);
     await rejectsStatus(service.updatePayment(basic.id, 1, 2, 'PENDING'), 400);
     console.log('PASS: actual SQL allocation, empty selection, legacy host access and private responses.');
+
+    const edited = await flow();
+    await service.revertToDraft(edited.id, 1);
+    let editable = await service.findOne(edited.id, 1);
+    assert.deepEqual(editable.items[0].members.map(value => value.userId).sort(), [1, 2, 3], 'reopening keeps saved choices');
+    editable = await service.updateItems(edited.id, 1, { items: [
+      { id: edited.itemId, name: 'Renamed item', price: 1234, quantity: 2 },
+      { name: 'New item', price: 500, quantity: 1 },
+    ] });
+    const keptItem = editable.items.find(item => item.id === edited.itemId);
+    const newItem = editable.items.find(item => item.id !== edited.itemId);
+    assert.deepEqual(keptItem.members.map(value => value.userId).sort(), [1, 2, 3], 'same item choices survive field changes');
+    assert.equal(newItem.members.length, 0, 'new items require explicit selection');
+    assert.equal(editable.totalAmount, 2968);
+    await rejectsStatus(service.updateItems(edited.id, 1, { items: [{ id: basic.itemId, name: 'Foreign', price: 1, quantity: 1 }] }), 400);
+    assert.equal((await service.findOne(edited.id, 1)).items.length, 2, 'foreign IDs fail without deletion');
+    editable = await service.updateItems(edited.id, 1, { items: [{ id: newItem.id, name: 'New item', price: 500, quantity: 1 }] });
+    assert.equal(await repo(SettlementItemMember).countBy({ itemId: edited.itemId }), 0, 'deleted item selections cascade only for that item');
+    assert.equal(await repo(SettlementItemMember).countBy({ itemId: basic.itemId }), 3, 'another settlement stays untouched');
+    await rejectsStatus(service.updateItems(edited.id, 1, { items: [{ id: edited.itemId, name: 'Stale', price: 1, quantity: 1 }] }), 400);
+    console.log('PASS: actual SQL item ID/selection preservation, new item opt-in, foreign/stale ID refusal and scoped cascade.');
 
     const beforePaid = messages.length;
     await Promise.all([
