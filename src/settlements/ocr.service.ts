@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ImageAnnotatorClient, protos } from '@google-cloud/vision';
@@ -84,6 +85,21 @@ export class OcrService {
     if (!fullText) {
       this.logger.warn('OCR_NO_TEXT');
       return this.emptyResult();
+    }
+    // 현재 정산은 원화 전용이므로 외화 숫자를 원화 품목으로 전달하지 않는다.
+    const currencyText = fullText.normalize('NFKC');
+    if (
+      /[¥$€£]\s*\d|\d\s*円|\b(?:JPY|USD|EUR|CNY|GBP)\s*\d/i.test(
+        currencyText,
+      ) ||
+      /(?:合計|小計|消費税|領収書)/.test(currencyText.replace(/\s/g, ''))
+    ) {
+      this.logger.warn('OCR_CURRENCY_UNSUPPORTED');
+      throw new UnprocessableEntityException({
+        code: 'OCR_CURRENCY_UNSUPPORTED',
+        message:
+          '현재 정산은 원화 영수증만 지원합니다. 엔화 등 외화 금액을 원화로 입력하지 말아주세요.',
+      });
     }
     const visualLines = annotation
       ? this.extractVisualLines(annotation)

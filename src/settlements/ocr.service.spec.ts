@@ -180,6 +180,37 @@ describe('OcrService failures', () => {
     });
     expect(successLog).toHaveBeenCalledWith('OCR_RESULT items=1');
     expect(JSON.stringify(successLog.mock.calls)).not.toContain('가치마트');
+    expect(detect).toHaveBeenCalledWith({
+      image: { content: Buffer.from('fixture image') },
+      imageContext: { languageHints: ['ko', 'en'] },
+    });
+  });
+
+  it.each([
+    '商品 ¥395\n合計 ¥395',
+    '商品 ￥395\n合計 ￥395',
+    '商品 395 円\n원 395',
+    'Item $12\nTOTAL $12',
+    'Item EUR 12',
+    '領 収 書\n合 計 395',
+  ])('does not return foreign currency amounts as won items', async (text) => {
+    detect.mockResolvedValue([{ fullTextAnnotation: { text } }]);
+    await expectFailure(service(), 'OCR_CURRENCY_UNSUPPORTED', 422);
+    expect(successLog).not.toHaveBeenCalled();
+  });
+
+  it('keeps a Japanese product name on a Korean receipt without treating it as a currency marker', async () => {
+    detect.mockResolvedValue([
+      {
+        fullTextAnnotation: {
+          text: '예시마트\n말차 Matcha 抹茶 1,500\n결제금액 1,500원',
+        },
+      },
+    ]);
+    expect(await service().parseReceipt('fixture.png')).toMatchObject({
+      items: [{ name: '말차 Matcha 抹茶', price: 1500, quantity: 1 }],
+      totalPrice: 1500,
+    });
   });
 
   it('실제 응답의 붙은 열과 낮은 신뢰도 숫자를 구분해 일곱 품목·30720원을 보존한다', async () => {

@@ -1,12 +1,13 @@
 import type { OcrItem, OcrResult } from './ocr.service';
 
 const TOTAL_KEYWORDS =
-  /^(총금액|총액|합계|결제(?:대상)?금액|받을금액|승인금액|판매합계|grandtotal|total)/i;
+  /^(총금액|총액|합계|주문합계|결제(?:대상)?금액|받을금액|승인금액|판매합계|grandtotal|total)/i;
 const NON_ITEM_KEYWORDS =
   /^(사업자|대표자?|주소|영수증|receipt|주문번호|테이블|승인|거래|판매일시|일시|날짜|공급가|부가(?:가치)?세|과세|면세|세액|합계|총액|결제|받을금액|사용금액|거스름|현금|신용|매출|봉사료|잔액|보증금|직원|계산원|판매원|취급자|점원|담당자?|고객번호|회원번호|가맹점|교환|환불|total|grandtotal|전화(?:번호|[:\d(])|tel(?:[:\d(])|pos(?:[:\d])|카드(?:번호|결제|승인|종류|사|[:\d*])|할인(?:금액|액|[:\d-])|포인트(?:적립|사용|잔액|[:\d]))/i;
 const ITEM_SECTION_END =
   /^(과세|면세|공급가액|부가(?:가치)?세|세액|봉투보증금액|합계|총액|총금액|결제|받을금액|승인금액|현금|신용|카드(?:결제|번호|승인|매출)|grandtotal|total)/i;
-const PRICE_PATTERN = /\d{1,3}(?:,\d{3})+|\d{3,}/g;
+const PRICE_PATTERN =
+  /(?<![\d.,+-])(?:[₩￦]\s*)?(?:\d{1,3}(?:,\d{3})+|\d{1,3}(?:\.\d{3})+|\d+)(?:\s*원)?(?![\d.,])/g;
 
 type ItemColumn = 'quantity' | 'unitPrice' | 'amount';
 interface PendingItem {
@@ -29,7 +30,9 @@ function toPrice(value: string): number {
 
 function isMetadata(line: string): boolean {
   return (
+    TOTAL_KEYWORDS.test(label(line)) ||
     NON_ITEM_KEYWORDS.test(label(line)) ||
+    /^계(?=[:₩￦\d]|$)/.test(label(line)) ||
     /\d{2,4}[-./]\d{1,2}[-./]\d{1,2}/.test(line) ||
     /\d{2,4}-\d{3,4}-\d{4}/.test(line)
   );
@@ -39,11 +42,32 @@ function findExplicitTotalPrice(lines: string[]): number | null {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (!TOTAL_KEYWORDS.test(label(line))) continue;
-    const prices = [...line.matchAll(PRICE_PATTERN)];
-    if (prices.length) return toPrice(prices[prices.length - 1][0]);
+    if (/[+−-]\s*\d/.test(line)) continue;
+    const prices = [...line.matchAll(PRICE_PATTERN)].filter(
+      (match) =>
+        !/^\s*(?:%|개|점|명|년|월|일|시|분|초|ea\b)/i.test(
+          line.slice((match.index ?? 0) + match[0].length),
+        ),
+    );
+    const currencyPrices = prices.filter(([value]) => /[₩￦원]/.test(value));
+    // 수량·적립률과 구분된 금액 한 개만 사용하며 복수 금액은 추측하지 않는다.
+    const candidates = currencyPrices.length
+      ? currencyPrices
+      : prices.length === 1
+        ? prices
+        : prices.filter(([value]) => toPrice(value) >= 100);
+    if (candidates.length === 1) {
+      const price = toPrice(candidates[0][0]);
+      if (Number.isSafeInteger(price) && price > 0) return price;
+    }
+    if (prices.length) continue;
     const next = lines[index + 1];
-    if (next && /^[₩￦]?\s*\d[\d,]*\s*원?$/.test(next)) {
-      return toPrice(next);
+    if (next) {
+      const values = numberValues(next);
+      if (values?.length === 1 && !/(개|ea)$/i.test(values[0])) {
+        const price = toPrice(values[0]);
+        if (Number.isSafeInteger(price) && price > 0) return price;
+      }
     }
   }
   return null;
@@ -53,8 +77,9 @@ function findTotalPrice(lines: string[]): number | null {
   const explicit = findExplicitTotalPrice(lines);
   if (explicit !== null) return explicit;
   for (const line of [...lines].reverse()) {
-    if (!/^[₩￦]\s*\d[\d,]*$/.test(line)) continue;
-    return toPrice(line);
+    if (!/^[₩￦]/.test(line) || numberValues(line)?.length !== 1) continue;
+    const price = toPrice(line);
+    if (Number.isSafeInteger(price) && price > 0) return price;
   }
   return null;
 }
@@ -85,11 +110,9 @@ function cleanProductName(name: string, hasItemIndex: boolean): string {
 }
 
 function itemHeader(line: string): boolean {
-  const compact = label(line);
-  return (
-    /^(상품명|품명|품목명|물품명)$/.test(compact) ||
-    (/상품명|품명|품목명|물품명/.test(compact) &&
-      /수량|단가|금액|가격/.test(compact))
+  const compact = label(line).replace(/[•·:,[\]()/\\-]/g, '');
+  return /^(?:(?:번호|순번|no\.?))?(?:상품명|상품|품명|품목명|물품명)(?:수량|단가|금액|가격)*$/i.test(
+    compact,
   );
 }
 
@@ -97,7 +120,7 @@ function findColumns(lines: string[], headerIndex: number): ItemColumn[] {
   if (headerIndex < 0) return [];
   let header = label(lines[headerIndex]);
   for (const line of lines.slice(headerIndex + 1)) {
-    if (!/^(수량|단가|금액|가격)$/.test(label(line))) break;
+    if (!/^(수량|단가|금액|가격)+$/.test(label(line))) break;
     header += label(line);
   }
   return [...header.matchAll(/수량|단가|금액|가격/g)].map(([column]) =>
@@ -112,10 +135,11 @@ function findColumns(lines: string[], headerIndex: number): ItemColumn[] {
 function hasSequentialIndexes(lines: string[]): boolean {
   const indexes: number[] = [];
   for (const line of lines) {
-    if (ITEM_SECTION_END.test(label(line))) break;
+    if (ITEM_SECTION_END.test(label(line)) || TOTAL_KEYWORDS.test(label(line)))
+      break;
     const index = line
       .replace(/^[*＊]+\s*/, '')
-      .match(/^(0\d{1,2})(?:[*＊]+\s*|\s+)(?=[가-힣A-Za-z(])/);
+      .match(/^(0\d{1,2})(?:\s*[*＊]+\s*|\s+)(?=[가-힣A-Za-z(])/);
     if (index) indexes.push(Number(index[1]));
   }
   return (
@@ -129,7 +153,9 @@ function numberValues(line: string): string[] | null {
     .replace(/(\d)\s+(원|개|ea)(?=\s|$)/gi, '$1$2');
   const values = normalized.split(/\s+/);
   return values.every((value) =>
-    /^[₩￦]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:원|개|ea)?$/i.test(value),
+    /^[₩￦]?(?:\d{1,3}(?:,\d{3})+|\d{1,3}(?:\.\d{3})+|\d+)(?:원|개|ea)?$/i.test(
+      value,
+    ),
   )
     ? values
     : null;
@@ -194,6 +220,18 @@ function makeItem(
     )
       return null;
     [quantity, price, amount] = numbers;
+  } else if (numbers.length === 3) {
+    // 표 제목이 없을 때도 단가×명시 수량=행 금액인 경우에만 열 순서를 인정한다.
+    const [unitPrice, count, lineAmount] = numbers;
+    if (
+      /[₩￦원]/.test(values[1]) ||
+      values.some((value) => /(?:개|ea)$/i.test(value)) ||
+      unitPrice * count !== lineAmount
+    )
+      return null;
+    price = unitPrice;
+    quantity = count;
+    amount = lineAmount;
   } else return null;
 
   const extended = price * quantity;
@@ -229,14 +267,21 @@ function parseItems(lines: string[], headerIndex: number): OcrItem[] {
     (/^(번호|순번|no\.?)/i.test(label(lines[headerIndex])) ||
       hasSequentialIndexes(lines.slice(headerIndex + 1)));
   let pending: PendingItem | null = null;
-  for (const line of lines.slice(headerIndex + 1)) {
+  const rows = lines.slice(headerIndex + 1);
+  for (const [index, line] of rows.entries()) {
     const compact = label(line);
-    if (ITEM_SECTION_END.test(compact)) {
+    if (
+      ITEM_SECTION_END.test(compact) ||
+      TOTAL_KEYWORDS.test(compact) ||
+      /^계(?=[:₩￦\d]|$)/.test(compact)
+    ) {
       if (headerIndex >= 0 || items.length > 0) break;
       continue;
     }
     if (
-      /^(상품명|품명|품목명|수량|금액|가격|단가|행사|증정)$/.test(compact) ||
+      /^(상품명|상품|품명|품목명|수량|금액|가격|단가|행사|증정)$/.test(
+        compact,
+      ) ||
       /^\*?\d{8,14}$/.test(compact)
     )
       continue;
@@ -245,7 +290,9 @@ function parseItems(lines: string[], headerIndex: number): OcrItem[] {
       pending = null;
       continue;
     }
-    const values = numberValues(line);
+    const values = numberValues(
+      columns.length ? line.replace(/^[*＊]?\d{8,14}\s+/, '') : line,
+    );
     if (values && pending) {
       pending.values.push(...values);
       const item = makeItem(
@@ -261,6 +308,18 @@ function parseItems(lines: string[], headerIndex: number): OcrItem[] {
       continue;
     }
     const row = splitItem(line);
+    const nextValues =
+      rows[index + 1] &&
+      numberValues(rows[index + 1].replace(/^[*＊]?\d{8,14}\s+/, ''));
+    if (
+      columns.length &&
+      /[가-힣A-Za-z]/.test(line) &&
+      nextValues?.length === columns.length &&
+      (!row || !makeItem(row.name, row.values, columns, hasItemIndex))
+    ) {
+      pending = { name: line, values: [] };
+      continue;
+    }
     if (row) {
       const item = makeItem(row.name, row.values, columns, hasItemIndex);
       if (item) items.push(item);
