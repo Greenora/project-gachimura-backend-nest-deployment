@@ -114,21 +114,27 @@ export class ChatGateway implements OnGatewayConnection {
       return reply;
     }
 
+    const roomName = `party_${data.partyId}`;
+    const membership = {
+      where: { partyId: data.partyId, userId, status: 'APPROVED' },
+    };
+    let joined = false;
     try {
-      const member = await this.memberRepository.findOne({
-        where: {
-          partyId: data.partyId,
-          userId,
-          status: 'APPROVED',
-        },
-      });
+      const member = await this.memberRepository.findOne(membership);
       if (!member) {
         return this.reject(client, '해당 모임의 멤버가 아닙니다.');
       }
-      const roomName = `party_${data.partyId}`;
       await client.join(roomName);
+      joined = true;
+      // 방 입장을 기다리는 동안 승인이 취소되면 입장을 되돌린다.
+      if (!(await this.memberRepository.findOne(membership))) {
+        await client.leave(roomName);
+        joined = false;
+        return this.reject(client, '해당 모임의 멤버가 아닙니다.');
+      }
       return { ok: true };
     } catch {
+      if (joined) await client.leave(roomName);
       return this.reject(
         client,
         '채팅방에 입장하지 못했습니다. 다시 시도해주세요.',
@@ -200,6 +206,27 @@ export class ChatGateway implements OnGatewayConnection {
         client,
         '메시지를 저장하지 못했습니다. 다시 시도해주세요.',
       );
+    }
+  }
+
+  notifySettlementUpdated(partyId: number, settlementId: number) {
+    this.server.to(`party_${partyId}`).emit('settlementUpdated', {
+      partyId,
+      settlementId,
+    });
+  }
+
+  notifyPartyUpdated(partyId: number) {
+    this.server.to(`party_${partyId}`).emit('partyUpdated', { partyId });
+  }
+
+  async removeMemberFromRoom(partyId: number, userId: number) {
+    const roomName = `party_${partyId}`;
+    const sockets = await this.server.in(roomName).fetchSockets();
+    for (const socket of sockets) {
+      if ((socket.data as AuthenticatedSocketData).user?.id === userId) {
+        socket.leave(roomName);
+      }
     }
   }
 

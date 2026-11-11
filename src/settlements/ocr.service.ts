@@ -28,6 +28,13 @@ interface GoogleServiceAccountCredentials {
   private_key: string;
 }
 
+type OcrProviderFailureReason =
+  | 'BILLING_DISABLED'
+  | 'SERVICE_DISABLED'
+  | 'IAM_PERMISSION_DENIED'
+  | 'PERMISSION_DENIED'
+  | 'UNAUTHENTICATED';
+
 interface VisualWord {
   text: string;
   x: number;
@@ -86,10 +93,14 @@ export class OcrService {
     return result;
   }
 
-  private unavailable(code: string): ServiceUnavailableException {
-    this.logger.error(code);
+  private unavailable(
+    code: string,
+    reason?: OcrProviderFailureReason,
+  ): ServiceUnavailableException {
+    this.logger.error(reason ? `${code} reason=${reason}` : code);
     return new ServiceUnavailableException({
       code,
+      ...(reason ? { reason } : {}),
       message:
         '영수증 자동 인식 서비스를 사용할 수 없습니다. 잠시 후 다시 시도하거나 품목을 직접 입력해주세요.',
     });
@@ -102,7 +113,21 @@ export class OcrService {
       error && typeof error === 'object' && 'code' in error
         ? error.code
         : undefined;
-    if (code === 7 || code === 16) return this.unavailable('OCR_AUTH_FAILED');
+    if (code === 7 || code === 16) {
+      const reason =
+        error && typeof error === 'object' && 'reason' in error
+          ? error.reason
+          : undefined;
+      const safeReason =
+        reason === 'BILLING_DISABLED' ||
+        reason === 'SERVICE_DISABLED' ||
+        reason === 'IAM_PERMISSION_DENIED'
+          ? reason
+          : code === 16
+            ? 'UNAUTHENTICATED'
+            : 'PERMISSION_DENIED';
+      return this.unavailable('OCR_AUTH_FAILED', safeReason);
+    }
     if (
       [4, 14, 'ENOTFOUND', 'ETIMEDOUT', 'ECONNRESET'].includes(
         code as string | number,

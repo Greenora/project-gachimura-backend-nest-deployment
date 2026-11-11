@@ -12,6 +12,110 @@ const createPushService = () =>
   }) as unknown as PushService;
 
 describe('ChatGateway', () => {
+  it('모임 갱신은 해당 모임방에 모임 ID만 전달한다', () => {
+    const gateway = new ChatGateway(
+      {} as Repository<ChatMessage>,
+      {} as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({ emit });
+    gateway.server = { to } as never;
+
+    gateway.notifyPartyUpdated(9);
+
+    expect(to).toHaveBeenCalledWith('party_9');
+    expect(emit).toHaveBeenCalledWith('partyUpdated', { partyId: 9 });
+  });
+
+  it('정산 갱신은 해당 모임방에 ID만 전달한다', () => {
+    const gateway = new ChatGateway(
+      {} as Repository<ChatMessage>,
+      {} as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({ emit });
+    gateway.server = { to } as never;
+    gateway.notifySettlementUpdated(9, 8);
+    expect(to).toHaveBeenCalledWith('party_9');
+    expect(emit).toHaveBeenCalledWith('settlementUpdated', {
+      partyId: 9,
+      settlementId: 8,
+    });
+  });
+
+  it('제외된 멤버의 모든 연결을 해당 방에서만 내보내고 계좌 안내를 전달하지 않는다', async () => {
+    const socket = (userId: number, rooms: string[]) => {
+      const memberships = new Set(rooms);
+      return {
+        data: { user: { id: userId } },
+        rooms: memberships,
+        leave: jest.fn((room: string) => memberships.delete(room)),
+        received: jest.fn(),
+      };
+    };
+    const removedPhone = socket(2, ['party_9', 'party_10']);
+    const removedPc = socket(2, ['party_9']);
+    const anotherParty = socket(2, ['party_10']);
+    const approvedGuest = socket(3, ['party_9']);
+    const clients = [removedPhone, removedPc, anotherParty, approvedGuest];
+    const gateway = new ChatGateway(
+      {
+        create: jest.fn((value: Partial<ChatMessage>) => value),
+        save: jest.fn().mockResolvedValue({ createdAt: new Date() }),
+      } as unknown as Repository<ChatMessage>,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          user: { id: 1, nickname: '방장' },
+        }),
+      } as unknown as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    const inRoom = jest.fn((room: string) => ({
+      fetchSockets: jest
+        .fn()
+        .mockResolvedValue(clients.filter((client) => client.rooms.has(room))),
+    }));
+    gateway.server = {
+      in: inRoom,
+      to: (room: string) => ({
+        emit: (event: string, payload: unknown) => {
+          for (const client of clients) {
+            if (client.rooms.has(room)) client.received(event, payload);
+          }
+        },
+      }),
+    } as never;
+
+    await gateway.removeMemberFromRoom(9, 2);
+
+    expect(inRoom).toHaveBeenCalledWith('party_9');
+    expect(removedPhone.leave).toHaveBeenCalledWith('party_9');
+    expect(removedPc.leave).toHaveBeenCalledWith('party_9');
+    expect(removedPhone.rooms.has('party_10')).toBe(true);
+    expect(anotherParty.leave).not.toHaveBeenCalled();
+    expect(approvedGuest.leave).not.toHaveBeenCalled();
+
+    const message = '입금 계좌 안내: 테스트은행 fixture-account';
+    expect(
+      await gateway.handleMessage({ partyId: 9, message }, {
+        data: { user: { id: 1 } },
+        rooms: new Set(['party_9']),
+      } as unknown as Socket),
+    ).toEqual({ ok: true });
+    expect(removedPhone.received).not.toHaveBeenCalled();
+    expect(removedPc.received).not.toHaveBeenCalled();
+    expect(anotherParty.received).not.toHaveBeenCalled();
+    expect(approvedGuest.received).toHaveBeenCalledWith(
+      'message',
+      expect.objectContaining({ message }),
+    );
+  });
+
   it('잘못 인코딩된 인증 쿠키는 예외 없이 연결을 거절한다', () => {
     const verifyAccessToken = jest.fn();
     const gateway = new ChatGateway(
@@ -169,6 +273,75 @@ describe('ChatGateway', () => {
       error: '해당 모임의 멤버가 아닙니다.',
     });
     expect(join).not.toHaveBeenCalled();
+  });
+
+  it('입장 대기 중 승인이 취소된 멤버는 방에 남지 않는다', async () => {
+    const findOne = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 1 })
+      .mockResolvedValueOnce(null);
+    const gateway = new ChatGateway(
+      {} as Repository<ChatMessage>,
+      { findOne } as unknown as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    let finishJoin!: () => void;
+    const rooms = new Set<string>();
+    const join = jest.fn(
+      (room: string) =>
+        new Promise<void>((resolve) => {
+          finishJoin = () => {
+            rooms.add(room);
+            resolve();
+          };
+        }),
+    );
+    const leave = jest.fn((room: string) => rooms.delete(room));
+    const client = {
+      data: { user: { id: 5 } },
+      join,
+      leave,
+      emit: jest.fn(),
+    } as unknown as Socket;
+    const pending = gateway.handleJoinRoom({ partyId: 9 }, client);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(findOne).toHaveBeenCalledTimes(1);
+    finishJoin();
+
+    expect(await pending).toEqual({
+      ok: false,
+      error: '해당 모임의 멤버가 아닙니다.',
+    });
+    expect(leave).toHaveBeenCalledWith('party_9');
+    expect(rooms.has('party_9')).toBe(false);
+  });
+
+  it('입장 직후 멤버 재확인에 실패하면 방에서 빠져나온다', async () => {
+    const gateway = new ChatGateway(
+      {} as Repository<ChatMessage>,
+      {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 1 })
+          .mockRejectedValueOnce(new Error('fixture database unavailable')),
+      } as unknown as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    const leave = jest.fn();
+    const client = {
+      data: { user: { id: 5 } },
+      join: jest.fn(),
+      leave,
+      emit: jest.fn(),
+    } as unknown as Socket;
+
+    expect(await gateway.handleJoinRoom({ partyId: 9 }, client)).toEqual({
+      ok: false,
+      error: '채팅방에 입장하지 못했습니다. 다시 시도해주세요.',
+    });
+    expect(leave).toHaveBeenCalledWith('party_9');
   });
 
   it('저장 실패 시 성공 응답이나 메시지 방송을 하지 않는다', async () => {

@@ -5,11 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { validate } from 'class-validator';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { ChatGateway } from '../chat/chat.gateway';
 import { Party } from '../parties/entities/party.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
+import { SettlementItemDto } from './dto/update-settlement-items.dto';
 import { SettlementItemMember } from './entities/settlement-item-member.entity';
 import { SettlementItem } from './entities/settlement-item.entity';
 import { SettlementPayment } from './entities/settlement-payment.entity';
@@ -121,6 +122,7 @@ function scenario(status = 'CONFIRMED') {
   const dataSource = { createQueryRunner: jest.fn(() => queryRunner) };
   const chatGateway = {
     sendSystemMessage: jest.fn<Promise<void>, [number, string]>(),
+    notifySettlementUpdated: jest.fn(),
   };
   const service = new SettlementsService(
     settlementRepository as unknown as Repository<Settlement>,
@@ -407,11 +409,144 @@ describe('잠금 후 정산 단계와 참여자 확인', () => {
       expect(fixture.chatGateway.sendSystemMessage).toHaveBeenCalledTimes(
         messages,
       );
-      if (action === 'revert' && before === 'SELECTING')
-        expect(fixture.selections).toHaveLength(0);
-      else expect(fixture.manager.delete).not.toHaveBeenCalled();
+      expect(fixture.selections).toHaveLength(1);
+      expect(fixture.manager.delete).not.toHaveBeenCalled();
+      expect(fixture.chatGateway.notifySettlementUpdated).toHaveBeenCalledTimes(
+        messages,
+      );
     },
   );
+});
+
+describe('품목 수정 시 선택과 갱신 알림 보존', () => {
+  it('이름·가격·수량을 수정해도 기존 품목 ID와 선택자를 유지한다', async () => {
+    const fixture = scenario('DRAFT');
+    await fixture.service.updateItems(8, 1, {
+      items: [{ id: 20, name: '수정한 우유', price: 150, quantity: 2 }],
+    });
+    expect(fixture.manager.update).toHaveBeenCalledWith(
+      SettlementItem,
+      { id: 20, settlementId: 8 },
+      { name: '수정한 우유', price: 150, quantity: 2 },
+    );
+    expect(fixture.manager.delete).not.toHaveBeenCalled();
+    expect(fixture.manager.save).not.toHaveBeenCalled();
+    expect(fixture.selections).toEqual([{ id: 30, itemId: 20, userId: 2 }]);
+    expect(fixture.chatGateway.notifySettlementUpdated).toHaveBeenCalledWith(
+      9,
+      8,
+    );
+    expect(
+      fixture.chatGateway.notifySettlementUpdated.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(
+      fixture.queryRunner.commitTransaction.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('삭제한 품목만 제거하고 새 품목은 선택자 없이 추가한다', async () => {
+    const fixture = scenario('DRAFT');
+    fixture.settlement.items.push({
+      id: 21,
+      settlementId: 8,
+      name: '빵',
+      price: 200,
+      quantity: 1,
+    });
+    await fixture.service.updateItems(8, 1, {
+      items: [
+        { id: 20, name: '우유', price: 100, quantity: 1 },
+        { name: '새 품목', price: 300, quantity: 1 },
+      ],
+    });
+    expect(fixture.manager.delete).toHaveBeenCalledTimes(1);
+    expect(fixture.manager.delete).toHaveBeenCalledWith(SettlementItem, {
+      settlementId: 8,
+      id: In([21]),
+    });
+    expect(fixture.manager.save).toHaveBeenCalledWith({
+      settlementId: 8,
+      name: '새 품목',
+      price: 300,
+      quantity: 1,
+    });
+    expect(fixture.selections).toHaveLength(1);
+  });
+
+  it.each([{ ids: [20, 20] }, { ids: [999] }, { ids: [null] }])(
+    '중복되거나 다른 정산·삭제된 품목 ID $ids는 쓰기 전에 거부한다',
+    async ({ ids }) => {
+      const fixture = scenario('DRAFT');
+      await expect(
+        fixture.service.updateItems(8, 1, {
+          items: ids.map((id) => ({
+            id: id as number,
+            name: '우유',
+            price: 100,
+            quantity: 1,
+          })),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(fixture.manager.delete).not.toHaveBeenCalled();
+      expect(fixture.manager.update).not.toHaveBeenCalled();
+      expect(fixture.manager.save).not.toHaveBeenCalled();
+      expect(
+        fixture.chatGateway.notifySettlementUpdated,
+      ).not.toHaveBeenCalled();
+      expect(fixture.queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('선택 저장은 커밋 후 알림을 보내고 실패한 저장은 알리지 않는다', async () => {
+    const fixture = scenario('SELECTING');
+    await fixture.service.selectItems(8, 2, { itemIds: [20] });
+    expect(fixture.chatGateway.notifySettlementUpdated).toHaveBeenCalledWith(
+      9,
+      8,
+    );
+    expect(
+      fixture.chatGateway.notifySettlementUpdated.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(
+      fixture.queryRunner.commitTransaction.mock.invocationCallOrder[0],
+    );
+    fixture.chatGateway.notifySettlementUpdated.mockClear();
+    fixture.manager.save.mockRejectedValueOnce(new Error('write failure'));
+    await expect(
+      fixture.service.selectItems(8, 2, { itemIds: [20] }),
+    ).rejects.toThrow('write failure');
+    expect(fixture.chatGateway.notifySettlementUpdated).not.toHaveBeenCalled();
+  });
+
+  it('알림 실패는 이미 저장한 선택을 실패로 바꾸지 않는다', async () => {
+    const fixture = scenario('SELECTING');
+    fixture.chatGateway.notifySettlementUpdated.mockImplementation(() => {
+      throw new Error('PRIVATE_SOCKET_MARKER');
+    });
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    await expect(
+      fixture.service.selectItems(8, 2, { itemIds: [20] }),
+    ).resolves.toBeDefined();
+    expect(fixture.queryRunner.rollbackTransaction).not.toHaveBeenCalled();
+    expect(JSON.stringify(warning.mock.calls)).not.toContain(
+      'PRIVATE_SOCKET_MARKER',
+    );
+  });
+
+  it('품목 ID·금액·수량은 정수여야 한다', async () => {
+    const valid = Object.assign(new SettlementItemDto(), {
+      id: 20,
+      name: '우유',
+      price: 100,
+      quantity: 1,
+    });
+    expect(await validate(valid)).toHaveLength(0);
+    for (const field of ['id', 'price', 'quantity']) {
+      expect(
+        await validate(
+          Object.assign(new SettlementItemDto(), valid, { [field]: 1.5 }),
+        ),
+      ).not.toHaveLength(0);
+    }
+  });
 });
 
 describe('입금 확인 요청 검증', () => {

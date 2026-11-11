@@ -38,7 +38,7 @@ describe('parseReceiptText', () => {
     expect(result.totalPrice).toBe(9500);
   });
 
-  it('세븐일레븐 영수증의 여러 줄 품목과 붙어서 인식된 수량·가격을 보정한다', () => {
+  it('여러 줄 품목의 규격을 보존하고 합계에 맞춰 불확실한 가격을 추측하지 않는다', () => {
     const result = parseReceiptText(`
       세계 1등 편의점
       (주)리아
@@ -79,12 +79,179 @@ describe('parseReceiptText', () => {
 
     expect(result).toEqual({
       storeName: '문정수정점',
-      items: [
-        { name: '라라스윗) 바닐라파인트', price: 6900, quantity: 1 },
-        { name: '라라스윗) 조코파인트', price: 6900, quantity: 1 },
-      ],
+      items: [{ name: '라라스윗) 바닐라파인트474', price: 6900, quantity: 1 }],
       totalPrice: 13820,
     });
+  });
+
+  it('명확히 분리된 여러 줄 수량·금액과 상품 규격을 보존한다', () => {
+    const result = parseReceiptText(`
+      예시 편의점
+      상품명 수량 금액
+      8800000000001
+      라라스윗) 바닐라파인트474
+      1 6,900
+      8800000000002
+      라라스윗) 조코파인트474ml
+      1 6,900
+      합계 13,800
+    `);
+
+    expect(result.items).toEqual([
+      { name: '라라스윗) 바닐라파인트474', price: 6900, quantity: 1 },
+      { name: '라라스윗) 조코파인트474ml', price: 6900, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(13800);
+  });
+
+  it('띄어진 표 제목을 인식하고 직원 정보·세금·받을 금액을 품목에서 제외한다', () => {
+    const result = parseReceiptText(`
+      예시 농협마트
+      예시직원 0008
+      상 품 명 수 량 단 가 금 액
+      우유 1 1,500 1,500
+      사과 2 1,000 2,000
+      부 가 세 318
+      받 을 금 액 3,500
+      예시직원 4321
+    `);
+
+    expect(result.items).toEqual([
+      { name: '우유', price: 1500, quantity: 1 },
+      { name: '사과', price: 1000, quantity: 2 },
+    ]);
+    expect(result.totalPrice).toBe(3500);
+  });
+
+  it('여러 줄 세금·결제 영역의 숫자를 앞선 미완성 상품명에 붙이지 않는다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      상품명 수량 금액
+      우유
+      1
+      1,500
+      확인되지 않은 행
+      부 가 세
+      136
+      받을 금액
+      1,500
+    `);
+
+    expect(result.items).toEqual([{ name: '우유', price: 1500, quantity: 1 }]);
+    expect(result.totalPrice).toBe(1500);
+  });
+
+  it('표 제목이 없어도 직원번호·연락처·일시와 합계 이후 안내를 제외한다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      직원명 0008
+      전화 010-0000-0000
+      판매일시 2026/11/11 13:30:00
+      우유 1,500
+      부 가 세 136
+      받을 금액 1,500
+      예시직원 4321
+    `);
+
+    expect(result.items).toEqual([{ name: '우유', price: 1500, quantity: 1 }]);
+    expect(result.totalPrice).toBe(1500);
+  });
+
+  it.each([
+    ['상품명 단가 수량 금액', '우유 1,500 2 3,000'],
+    ['상품명 수량 단가 금액', '우유 2 1,500 3,000'],
+    ['상품명 수량 금액', '우유 2 3,000'],
+  ])('%s의 열 의미에 맞게 수량과 단가를 추출한다', (header, row) => {
+    const result = parseReceiptText(`예시마트\n${header}\n${row}\n합계 3,000`);
+
+    expect(result.items).toEqual([{ name: '우유', price: 1500, quantity: 2 }]);
+    expect(
+      result.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    ).toBe(3000);
+  });
+
+  it('단가인지 행 합계인지 불확실한 수량 금액을 추측해 늘리지 않는다', () => {
+    const result = parseReceiptText('예시마트\n우유 2개 3,000\n합계 3,000');
+
+    expect(result.items).toEqual([]);
+    expect(result.totalPrice).toBe(3000);
+  });
+
+  it('명시된 단가·수량·행 금액이 맞지 않으면 금액을 임의로 보정하지 않는다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      상품명 단가 수량 금액
+      우유 1,500 2 2,900
+      합계 2,900
+    `);
+
+    expect(result.items).toEqual([]);
+    expect(result.totalPrice).toBe(2900);
+  });
+
+  it('상품명의 모델 번호·용량을 가격이나 수량으로 잘라내지 않는다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      상품명 금액
+      마스크 KF94 1,500
+      생수 500ml 1,000
+      비타민C1000 2,000
+      합계 4,500
+    `);
+
+    expect(result.items).toEqual([
+      { name: '마스크 KF94', price: 1500, quantity: 1 },
+      { name: '생수 500ml', price: 1000, quantity: 1 },
+      { name: '비타민C1000', price: 2000, quantity: 1 },
+    ]);
+  });
+
+  it('상품명 옆 수량과 다음 줄 금액도 같은 표의 열에 맞춰 처리한다', () => {
+    const result = parseReceiptText(
+      '예시마트\n상품명 수량 금액\n우유 2\n3,000\n합계 3,000',
+    );
+    expect(result.items).toEqual([{ name: '우유', price: 1500, quantity: 2 }]);
+  });
+
+  it('깨진 쉼표나 식별 번호를 숫자만 이어 붙여 금액으로 만들지 않는다', () => {
+    const result = parseReceiptText(
+      '예시마트\n직원명 0008\n전화 010-0000-0000\n우유 1,5002\n마스크 1,00\n생수 1,000\n합계 1,000',
+    );
+    expect(result.items).toEqual([{ name: '생수', price: 1000, quantity: 1 }]);
+  });
+
+  it('카드 결제 안내 뒤 직원명을 다시 상품으로 읽지 않는다', () => {
+    const result = parseReceiptText(
+      '예시마트\n상품명 금액\n우유 1,500\n카드 결제 1,500\n예시직원 4321',
+    );
+    expect(result.items).toEqual([{ name: '우유', price: 1500, quantity: 1 }]);
+  });
+
+  it.each(['우유 2원 3,000개', '우유 ₩2 3,000'])(
+    '수량·금액 열의 단위가 모순된 %s는 금액으로 변환하지 않는다',
+    (row) => {
+      expect(
+        parseReceiptText(`예시마트\n상품명 수량 금액\n${row}\n합계 3,000`)
+          .items,
+      ).toEqual([]);
+    },
+  );
+
+  it('메타데이터 단어가 일부 포함된 실제 상품은 제외하지 않는다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      상품명 금액
+      카드지갑 5,000
+      전화기 8,000
+      할인우유 1,500
+      합계 14,500
+    `);
+
+    expect(result.items).toEqual([
+      { name: '카드지갑', price: 5000, quantity: 1 },
+      { name: '전화기', price: 8000, quantity: 1 },
+      { name: '할인우유', price: 1500, quantity: 1 },
+    ]);
   });
 
   it('GS25 영수증의 좌표 기반 행에서 상품만 추출한다', () => {

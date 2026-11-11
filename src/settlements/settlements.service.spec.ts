@@ -127,6 +127,7 @@ describe('SettlementsService', () => {
       rollbackTransaction: jest.fn(),
       release: jest.fn(),
       manager: {
+        find: jest.fn().mockResolvedValue([]),
         findOne: jest.fn((entity: unknown) =>
           Promise.resolve(entity === Party ? { id: 9, hostId: 2 } : settlement),
         ),
@@ -151,7 +152,7 @@ describe('SettlementsService', () => {
       partyRepository,
       {} as Repository<PartyMember>,
       dataSource,
-      {} as ChatGateway,
+      { notifySettlementUpdated: jest.fn() } as unknown as ChatGateway,
     );
 
     await service.updateItems(8, 2, {
