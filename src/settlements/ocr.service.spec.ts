@@ -181,4 +181,90 @@ describe('OcrService failures', () => {
     expect(successLog).toHaveBeenCalledWith('OCR_RESULT items=1');
     expect(JSON.stringify(successLog.mock.calls)).not.toContain('가치마트');
   });
+
+  it('reconstructs receipt columns from positioned words before parsing items', async () => {
+    const rows: Array<Array<[string, number]>> = [
+      [['예시마트', 0]],
+      [
+        ['직원명', 0],
+        ['0008', 140],
+      ],
+      [
+        ['상', 0],
+        ['품', 12],
+        ['명', 24],
+        ['단', 140],
+        ['가', 152],
+        ['수', 240],
+        ['량', 252],
+        ['금', 340],
+        ['액', 352],
+      ],
+      [
+        ['우유', 0],
+        ['1,500', 140],
+        ['2', 240],
+        ['3,000', 340],
+      ],
+      [
+        ['부', 0],
+        ['가', 12],
+        ['세', 24],
+        ['273', 340],
+      ],
+      [
+        ['받', 0],
+        ['을', 12],
+        ['금', 24],
+        ['액', 36],
+        ['3,000', 340],
+      ],
+      [
+        ['예시직원', 0],
+        ['4321', 140],
+      ],
+    ];
+    const paragraphs = rows
+      .map((row, rowIndex) => ({
+        words: row
+          .map(([text, x]) => {
+            const y = rowIndex * 24;
+            const width = text.length * 10;
+            return {
+              symbols: [...text].map((text) => ({ text })),
+              boundingBox: {
+                vertices: [
+                  { x, y },
+                  { x: x + width, y },
+                  { x: x + width, y: y + 12 },
+                  { x, y: y + 12 },
+                ],
+              },
+            };
+          })
+          .reverse(),
+      }))
+      .reverse();
+    const receiptMarker = 'PRIVATE_RECEIPT_MUST_NOT_BE_LOGGED';
+    detect.mockResolvedValue([
+      {
+        fullTextAnnotation: {
+          text: `${receiptMarker}\n예시직원 4321\n받을 금액 3,000\n우유 2개 3,000`,
+          pages: [{ blocks: [{ paragraphs }] }],
+        },
+      },
+    ]);
+
+    expect(await service().parseReceipt('fixture.png')).toEqual({
+      storeName: '예시마트',
+      items: [{ name: '우유', price: 1500, quantity: 2 }],
+      totalPrice: 3000,
+    });
+    expect(successLog).toHaveBeenCalledWith('OCR_RESULT items=1');
+    for (const value of [receiptMarker, '예시마트', '예시직원', privateValue]) {
+      expect(
+        JSON.stringify([successLog.mock.calls, errorLog.mock.calls]),
+      ).not.toContain(value);
+    }
+  });
 });
