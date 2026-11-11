@@ -210,6 +210,14 @@ export class OcrService {
             const text = (word.symbols ?? [])
               .map((symbol) => symbol.text ?? '')
               .join('');
+            // 배경 무늬를 숫자로 오인한 낮은 신뢰도의 값은 정산에 사용하지 않는다.
+            if (
+              /^[\d,]+$/.test(text) &&
+              word.confidence != null &&
+              word.confidence < 0.5
+            ) {
+              continue;
+            }
             const vertices = word.boundingBox?.vertices ?? [];
             if (!text || vertices.length === 0) {
               continue;
@@ -219,12 +227,43 @@ export class OcrService {
             const yCoordinates = vertices.map((vertex) => vertex.y ?? 0);
             const minY = Math.min(...yCoordinates);
             const maxY = Math.max(...yCoordinates);
-            words.push({
-              text,
-              x: Math.min(...xCoordinates),
-              centerY: (minY + maxY) / 2,
-              height: Math.max(maxY - minY, 1),
-            });
+            const height = Math.max(maxY - minY, 1);
+            let part = '';
+            let partX = Math.min(...xCoordinates);
+            let previousRight: number | undefined;
+            for (const symbol of word.symbols ?? []) {
+              const bounds = symbol.boundingBox?.vertices ?? [];
+              const left = bounds.length
+                ? Math.min(...bounds.map((vertex) => vertex.x ?? 0))
+                : undefined;
+              // SDK가 수량과 금액을 한 단어로 합쳐도 실제 열 사이의 간격은 남아 있다.
+              if (
+                part &&
+                left != null &&
+                previousRight != null &&
+                left - previousRight > height * 0.8
+              ) {
+                words.push({
+                  text: part,
+                  x: partX,
+                  centerY: (minY + maxY) / 2,
+                  height,
+                });
+                part = '';
+              }
+              if (!part && left != null) partX = left;
+              part += symbol.text ?? '';
+              previousRight = bounds.length
+                ? Math.max(...bounds.map((vertex) => vertex.x ?? 0))
+                : undefined;
+            }
+            if (part)
+              words.push({
+                text: part,
+                x: partX,
+                centerY: (minY + maxY) / 2,
+                height,
+              });
           }
         }
       }

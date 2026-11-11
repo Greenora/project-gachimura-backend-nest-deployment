@@ -1,7 +1,7 @@
 import type { OcrItem, OcrResult } from './ocr.service';
 
 const TOTAL_KEYWORDS =
-  /^(총금액|총액|합계|결제금액|받을금액|승인금액|판매합계|grandtotal|total)/i;
+  /^(총금액|총액|합계|결제(?:대상)?금액|받을금액|승인금액|판매합계|grandtotal|total)/i;
 const NON_ITEM_KEYWORDS =
   /^(사업자|대표자?|주소|영수증|receipt|주문번호|테이블|승인|거래|판매일시|일시|날짜|공급가|부가(?:가치)?세|과세|면세|세액|합계|총액|결제|받을금액|사용금액|거스름|현금|신용|매출|봉사료|잔액|보증금|직원|계산원|판매원|취급자|점원|담당자?|고객번호|회원번호|가맹점|교환|환불|total|grandtotal|전화(?:번호|[:\d(])|tel(?:[:\d(])|pos(?:[:\d])|카드(?:번호|결제|승인|종류|사|[:\d*])|할인(?:금액|액|[:\d-])|포인트(?:적립|사용|잔액|[:\d]))/i;
 const ITEM_SECTION_END =
@@ -20,7 +20,7 @@ function normalizeLine(line: string): string {
 
 // OCR이 한글 라벨 사이에 넣은 공백은 판별할 때만 제거한다.
 function label(line: string): string {
-  return line.replace(/\s/g, '').replace(/^[*[\]():-]+/, '');
+  return line.replace(/\s/g, '').replace(/^[*＊[\]():-]+/, '');
 }
 
 function toPrice(value: string): number {
@@ -35,7 +35,7 @@ function isMetadata(line: string): boolean {
   );
 }
 
-function findTotalPrice(lines: string[]): number | null {
+function findExplicitTotalPrice(lines: string[]): number | null {
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index];
     if (!TOTAL_KEYWORDS.test(label(line))) continue;
@@ -46,6 +46,12 @@ function findTotalPrice(lines: string[]): number | null {
       return toPrice(next);
     }
   }
+  return null;
+}
+
+function findTotalPrice(lines: string[]): number | null {
+  const explicit = findExplicitTotalPrice(lines);
+  if (explicit !== null) return explicit;
   for (const line of [...lines].reverse()) {
     if (!/^[₩￦]\s*\d[\d,]*$/.test(line)) continue;
     return toPrice(line);
@@ -68,9 +74,12 @@ function findStoreName(lines: string[]): string | null {
   );
 }
 
-function cleanProductName(name: string): string {
+function cleanProductName(name: string, hasItemIndex: boolean): string {
+  name = name.replace(/^[*＊]+\s*/, '');
+  // 번호 열 또는 연속된 01·02 행이 확인된 경우에만 숫자 접두어를 지운다.
+  if (hasItemIndex) name = name.replace(/^\d{1,3}(?:\s*[*＊]+\s*|\s+)/, '');
   return name
-    .replace(/^\*?(?:\d{1,3}|\d{8,14})\s+/, '')
+    .replace(/^\d{8,14}\s+/, '')
     .replace(/[-:]+$/, '')
     .trim();
 }
@@ -100,6 +109,20 @@ function findColumns(lines: string[], headerIndex: number): ItemColumn[] {
   );
 }
 
+function hasSequentialIndexes(lines: string[]): boolean {
+  const indexes: number[] = [];
+  for (const line of lines) {
+    if (ITEM_SECTION_END.test(label(line))) break;
+    const index = line
+      .replace(/^[*＊]+\s*/, '')
+      .match(/^(0\d{1,2})(?:[*＊]+\s*|\s+)(?=[가-힣A-Za-z(])/);
+    if (index) indexes.push(Number(index[1]));
+  }
+  return (
+    indexes.length >= 2 && indexes.every((value, index) => value === index + 1)
+  );
+}
+
 function numberValues(line: string): string[] | null {
   const normalized = line
     .replace(/([₩￦])\s+/g, '$1')
@@ -116,8 +139,9 @@ function makeItem(
   name: string,
   values: string[],
   columns: ItemColumn[],
+  hasItemIndex: boolean,
 ): OcrItem | null {
-  name = cleanProductName(name);
+  name = cleanProductName(name, hasItemIndex);
   if (
     !name ||
     name.length > 80 ||
@@ -148,9 +172,11 @@ function makeItem(
     );
     quantity = fields.quantity ?? 1;
     amount = fields.amount;
-    if (fields.unitPrice !== undefined) price = fields.unitPrice;
-    else if (amount !== undefined && amount % quantity === 0)
+    // 정산에는 표시 단가보다 실제 청구된 행 금액을 사용한다(할인 포함).
+    if (amount !== undefined) {
+      if (amount % quantity !== 0) return null;
       price = amount / quantity;
+    } else if (fields.unitPrice !== undefined) price = fields.unitPrice;
     else return null;
   } else if (numbers.length === 1 && !/(개|ea)$/i.test(values[0])) {
     // 표 제목 없는 경우 짧은 번호·직원번호·바코드를 금액으로 취급하지 않는다.
@@ -178,6 +204,10 @@ function makeItem(
     (amount !== undefined && amount !== extended)
   )
     return null;
+  const promotionPrice = name.match(/^\(\s*(\d{1,3}(?:,\d{3})+|\d+)\s*\)\s*/);
+  if (promotionPrice && toPrice(promotionPrice[1]) === price) {
+    name = name.slice(promotionPrice[0].length).trim();
+  }
   return { name, price, quantity };
 }
 
@@ -194,6 +224,10 @@ function splitItem(line: string): PendingItem | null {
 function parseItems(lines: string[], headerIndex: number): OcrItem[] {
   const items: OcrItem[] = [];
   const columns = findColumns(lines, headerIndex);
+  const hasItemIndex =
+    headerIndex >= 0 &&
+    (/^(번호|순번|no\.?)/i.test(label(lines[headerIndex])) ||
+      hasSequentialIndexes(lines.slice(headerIndex + 1)));
   let pending: PendingItem | null = null;
   for (const line of lines.slice(headerIndex + 1)) {
     const compact = label(line);
@@ -214,7 +248,12 @@ function parseItems(lines: string[], headerIndex: number): OcrItem[] {
     const values = numberValues(line);
     if (values && pending) {
       pending.values.push(...values);
-      const item = makeItem(pending.name, pending.values, columns);
+      const item = makeItem(
+        pending.name,
+        pending.values,
+        columns,
+        hasItemIndex,
+      );
       if (item) {
         items.push(item);
         pending = null;
@@ -223,7 +262,7 @@ function parseItems(lines: string[], headerIndex: number): OcrItem[] {
     }
     const row = splitItem(line);
     if (row) {
-      const item = makeItem(row.name, row.values, columns);
+      const item = makeItem(row.name, row.values, columns, hasItemIndex);
       if (item) items.push(item);
       pending =
         !item && headerIndex >= 0 && row.values.length < columns.length
@@ -241,15 +280,15 @@ export function parseReceiptText(
   text: string,
   coordinateLines?: string[],
 ): OcrResult {
-  const lines = (
-    coordinateLines?.length ? coordinateLines : text.split(/\r?\n/)
-  )
-    .map(normalizeLine)
-    .filter(Boolean);
+  const textLines = text.split(/\r?\n/).map(normalizeLine).filter(Boolean);
+  const lines = coordinateLines?.length
+    ? coordinateLines.map(normalizeLine).filter(Boolean)
+    : textLines;
   const headerIndex = lines.findIndex(itemHeader);
   return {
     storeName: findStoreName(lines),
     items: parseItems(lines, headerIndex),
-    totalPrice: findTotalPrice(lines),
+    // 휘어진 영수증에서 좌표 행이 어긋나도 원문의 명시된 결제 금액을 우선한다.
+    totalPrice: findExplicitTotalPrice(textLines) ?? findTotalPrice(lines),
   };
 }

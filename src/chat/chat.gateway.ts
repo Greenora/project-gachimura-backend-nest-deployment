@@ -8,7 +8,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 import { AuthService } from '../auth/auth.service';
 import { isAllowedOrigin } from '../config/cors';
@@ -66,7 +66,7 @@ export class ChatGateway implements OnGatewayConnection {
     return { ok: false, error };
   }
 
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     const authToken = (
       client.handshake.auth as Record<string, unknown> | undefined
     )?.token;
@@ -86,10 +86,14 @@ export class ChatGateway implements OnGatewayConnection {
         return;
       }
       const payload = this.authService.verifyAccessToken(token);
+      if (!Number.isSafeInteger(payload.sub) || payload.sub < 1) {
+        throw new Error('INVALID_SOCKET_USER');
+      }
       const socketData = client.data as AuthenticatedSocketData;
       socketData.user = {
         id: payload.sub,
       };
+      await client.join(`user_${payload.sub}`);
     } catch {
       client.emit('error', '채팅 인증에 실패했습니다.');
       client.disconnect(true);
@@ -200,12 +204,40 @@ export class ChatGateway implements OnGatewayConnection {
       void this.pushService
         .notifyParty(payload.partyId, userId)
         .catch(() => undefined);
+      void this.notifyChatRecipients(
+        payload.partyId,
+        userId,
+        savedChat.id,
+      ).catch(() => undefined);
       return { ok: true };
     } catch {
       return this.reject(
         client,
         '메시지를 저장하지 못했습니다. 다시 시도해주세요.',
       );
+    }
+  }
+
+  private async notifyChatRecipients(
+    partyId: number,
+    senderId: number,
+    messageId: number,
+  ) {
+    if (!Number.isSafeInteger(messageId) || messageId < 1) return;
+    const members = await this.memberRepository.find({
+      where: {
+        partyId,
+        status: 'APPROVED',
+        isMuted: false,
+        userId: Not(senderId),
+      },
+      select: { userId: true },
+    });
+    const rooms = [
+      ...new Set(members.map((member) => `user_${member.userId}`)),
+    ];
+    if (rooms.length) {
+      this.server.to(rooms).emit('chatNotification', { partyId, messageId });
     }
   }
 

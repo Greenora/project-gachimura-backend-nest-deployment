@@ -177,7 +177,7 @@ describe('parseReceiptText', () => {
     expect(result.totalPrice).toBe(3000);
   });
 
-  it('명시된 단가·수량·행 금액이 맞지 않으면 금액을 임의로 보정하지 않는다', () => {
+  it('표시 단가와 달라도 명시된 행 금액과 수량으로 실제 청구 단가를 계산한다', () => {
     const result = parseReceiptText(`
       예시마트
       상품명 단가 수량 금액
@@ -185,8 +185,16 @@ describe('parseReceiptText', () => {
       합계 2,900
     `);
 
-    expect(result.items).toEqual([]);
+    expect(result.items).toEqual([{ name: '우유', price: 1450, quantity: 2 }]);
     expect(result.totalPrice).toBe(2900);
+  });
+
+  it('행 금액을 수량으로 정확하게 나눌 수 없으면 금액을 반올림하지 않는다', () => {
+    expect(
+      parseReceiptText(
+        '예시마트\n상품명 단가 수량 금액\n우유 1,500 3 2,900\n합계 2,900',
+      ).items,
+    ).toEqual([]);
   });
 
   it('상품명의 모델 번호·용량을 가격이나 수량으로 잘라내지 않는다', () => {
@@ -252,6 +260,145 @@ describe('parseReceiptText', () => {
       { name: '전화기', price: 8000, quantity: 1 },
       { name: '할인우유', price: 1500, quantity: 1 },
     ]);
+  });
+
+  it('영수증의 별표만 제거하고 숫자 브랜드·모델·용량·상품명 기호는 보존한다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      상품명 금액
+      365 우유 1,500
+      * 한끼에 하나씩 양상추 4,980
+      ＊ 마스크 KF94 1,500
+      생 삼치 (20S) 3,400
+      어린 잎 & 믹스 채소 3,580
+      합계 14,960
+    `);
+
+    expect(result.items).toEqual([
+      { name: '365 우유', price: 1500, quantity: 1 },
+      { name: '한끼에 하나씩 양상추', price: 4980, quantity: 1 },
+      { name: '마스크 KF94', price: 1500, quantity: 1 },
+      { name: '생 삼치 (20S)', price: 3400, quantity: 1 },
+      { name: '어린 잎 & 믹스 채소', price: 3580, quantity: 1 },
+    ]);
+  });
+
+  it('번호 열이 명시된 경우에만 상품명 앞의 행 번호를 제거한다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      번호 상품명 금액
+      01 365 우유 1,500
+      *02 마스크 KF94 1,500
+      합계 3,000
+    `);
+
+    expect(result.items).toEqual([
+      { name: '365 우유', price: 1500, quantity: 1 },
+      { name: '마스크 KF94', price: 1500, quantity: 1 },
+    ]);
+  });
+
+  it('이름·받을 금액·띄어진 부가세를 작은 금액의 품목으로 만들지 않는다', () => {
+    expect(
+      parseReceiptText(`
+      예시마트
+      예시이름 00085
+      받을 금액: 8. 560
+      부 가 세 125
+    `).items,
+    ).toEqual([]);
+  });
+
+  it('전각 별표가 붙은 세금 안내에서도 상품 영역을 종료한다', () => {
+    expect(
+      parseReceiptText(`
+      예시마트
+      상품명 금액
+      * 365 우유 1,500
+      ＊ 부 가 세 136
+      예시직원 4321
+    `).items,
+    ).toEqual([{ name: '365 우유', price: 1500, quantity: 1 }]);
+  });
+
+  it('제공된 영수증의 01~07 행과 세금 표시를 구분해 일곱 품목의 금액을 보존한다', () => {
+    const result = parseReceiptText(`
+      예시마트
+      상품명 단가 수량 금액
+      01 깐띠 모스카토 750m 9,800 1 9,800
+      02 믹스 보드카700ml 6,980 1 6,980
+      03* 생삼치(20S) 3,400 1 3,400
+      04* ( 990 ) 깐마늘 990 1 990
+      05* (990)태양파 990 1 990
+      06* 어린잎&믹스채소 3,580 1 3,580
+      07 * 한끼에하나씩양상추 4,980 1 4,980
+      합계 30,720
+    `);
+
+    expect(result.items).toEqual([
+      { name: '깐띠 모스카토 750m', price: 9800, quantity: 1 },
+      { name: '믹스 보드카700ml', price: 6980, quantity: 1 },
+      { name: '생삼치(20S)', price: 3400, quantity: 1 },
+      { name: '깐마늘', price: 990, quantity: 1 },
+      { name: '태양파', price: 990, quantity: 1 },
+      { name: '어린잎&믹스채소', price: 3580, quantity: 1 },
+      { name: '한끼에하나씩양상추', price: 4980, quantity: 1 },
+    ]);
+    expect(
+      result.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+    ).toBe(30720);
+    expect(result.totalPrice).toBe(30720);
+  });
+
+  it('연속 행 번호로 확인되지 않은 숫자 상품명은 지우지 않는다', () => {
+    expect(
+      parseReceiptText(`
+      예시마트
+      상품명 금액
+      01 우유 1,500
+      03 마스크 KF94 1,500
+      합계 3,000
+    `).items,
+    ).toEqual([
+      { name: '01 우유', price: 1500, quantity: 1 },
+      { name: '03 마스크 KF94', price: 1500, quantity: 1 },
+    ]);
+  });
+
+  it('상품명의 괄호 숫자가 단가와 다르면 가격 접두어로 지우지 않는다', () => {
+    expect(
+      parseReceiptText(`
+      예시마트
+      상품명 금액
+      (990) 마스크 KF94 1,500
+      합계 1,500
+    `).items,
+    ).toEqual([{ name: '(990) 마스크 KF94', price: 1500, quantity: 1 }]);
+  });
+
+  it('좌표 행의 세금이 합계에 섞여도 원문의 명시된 결제대상금액을 사용한다', () => {
+    const result = parseReceiptText(
+      '예시마트\n부가세\n1,525\n합\n계\n30,720\n결제대상금액\n30,720',
+      [
+        '예시마트',
+        '상품명 금액',
+        '우유 30,720',
+        '부가세 15,255',
+        '합 계 1,525',
+        '결제 대상 금액',
+      ],
+    );
+    expect(result.totalPrice).toBe(30720);
+  });
+
+  it('원문의 라벨 없는 통화 금액보다 좌표 행의 명시된 결제금액을 우선한다', () => {
+    expect(
+      parseReceiptText('예시마트\n₩900', [
+        '예시마트',
+        '우유 1,000',
+        '결제금액 1,000',
+      ]).totalPrice,
+    ).toBe(1000);
   });
 
   it('GS25 영수증의 좌표 기반 행에서 상품만 추출한다', () => {
