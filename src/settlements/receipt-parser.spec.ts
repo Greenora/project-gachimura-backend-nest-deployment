@@ -554,4 +554,191 @@ describe('parseReceiptText', () => {
   ])('금액이 불명확한 %s에서 임의 총액을 만들지 않는다', (line) =>
     expect(parseReceiptText(`예시마트\n${line}`).totalPrice).toBeNull(),
   );
+
+  it('결제액·총합계액 라벨을 상품으로 넣지 않고 실제 결제액을 반환한다', () => {
+    const result = parseReceiptText(
+      '예시매장\n상품명 단가 수량 금액\n옷 60,000 1 60,000\n총합계액 60,000\n결제액 60,000',
+    );
+    expect(result.items).toEqual([{ name: '옷', price: 60000, quantity: 1 }]);
+    expect(result.totalPrice).toBe(60000);
+  });
+
+  it('메뉴 표의 여러 줄 이름을 연결하고 0원 옵션·주문금액을 상품에서 제외한다', () => {
+    const result = parseReceiptText(
+      '예시식당\n메뉴 수량 금액\n만두 8알 1 6,000\n오리지널 1 0\n김밥 1 5,000\n컵\n라면 1 3,000\n주문금액 14,000',
+    );
+    expect(result.items).toEqual([
+      { name: '만두 8알', price: 6000, quantity: 1 },
+      { name: '김밥', price: 5000, quantity: 1 },
+      { name: '컵 라면', price: 3000, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(14000);
+  });
+
+  it('이전 상품 정가·명시 할인액·순금액이 일치할 때만 상품별 할인을 반영한다', () => {
+    const result = parseReceiptText(
+      '예시매장\n상품명 금액\n저지 A 135,000\n30% 할인 -40,500 94,500\n저지 B 105,000\n40% 할인 -42,000 63,000\n쇼핑백 100\n합계 157,600',
+    );
+    expect(result.items).toEqual([
+      { name: '저지 A', price: 94500, quantity: 1 },
+      { name: '저지 B', price: 63000, quantity: 1 },
+      { name: '쇼핑백', price: 100, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(157600);
+    expect(
+      parseReceiptText(
+        '상품명 금액\n저지 135,000\n30% 할인 94,500 -40,500\n합계 94,500',
+      ).items,
+    ).toEqual([{ name: '저지', price: 94500, quantity: 1 }]);
+    expect(
+      parseReceiptText(
+        '상품명 금액\n저지 10,000\n할인 -2,000 7,000\n합계 7,000',
+      ).items,
+    ).toEqual([{ name: '저지', price: 10000, quantity: 1 }]);
+    expect(
+      parseReceiptText(
+        '상품명 금액\n저지 10,000\n할인 -2,000 7,000\n가방 3,000\n합계 10,000',
+      ).items,
+    ).toEqual([
+      { name: '저지', price: 10000, quantity: 1 },
+      { name: '가방', price: 3000, quantity: 1 },
+    ]);
+  });
+
+  it('같은 이름으로 명시된 세트 할인은 한 번 적용하고 0원 구성품을 별도 청구하지 않는다', () => {
+    const result = parseReceiptText(
+      '예시카페\n상품명 금액\n6팩 세트 20,100\n파이 2 0\n6팩 세트 -3,100\n6팩 세트 -3,100\n라떼 6,200\n합계 23,200',
+    );
+    expect(result.items).toEqual([
+      { name: '6팩 세트', price: 17000, quantity: 1 },
+      { name: '라떼', price: 6200, quantity: 1 },
+    ]);
+  });
+
+  it('단일 상품의 명시 총할인은 반복 안내를 중복 차감하지 않고 정확히 한 번 반영한다', () => {
+    const result = parseReceiptText(
+      '예시매장\n상품명 단가 수량 금액\n물티슈 8개입 3,900 1 3,900\n총합계액 3,900\n할인액 -780\n행사할인 -780\n총할인액 -780\n제 3,120',
+    );
+    expect(result.items).toEqual([
+      { name: '물티슈 8개입', price: 3120, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(3120);
+  });
+
+  it('두 상품에 걸친 전체 할인은 어느 상품의 할인인지 추측 배분하지 않는다', () => {
+    const result = parseReceiptText(
+      '예시마트\n상품명 금액\n호떡 A 3,980\n호떡 B 3,980\n총합계액 7,960\n총할인액 -3,980\n결제금액 3,980',
+    );
+    expect(result.items).toEqual([
+      { name: '호떡 A', price: 3980, quantity: 1 },
+      { name: '호떡 B', price: 3980, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(3980);
+  });
+
+  it('명시된 결제수단과 제휴할인이 원 합계와 맞을 때 실제 카드청구액을 사용한다', () => {
+    const result = parseReceiptText(
+      '예시카페\n메뉴 수량 할인 금액\n음료 A 1 0 5,900\n음료 B 1 0 5,800\n합계 11,700\n받을금액 11,700\n받은금액 11,700\n결제수단별 결제내역\n신용카드 10,530\n제휴할인 1,170\n할인내역\n제휴카드할인금액 1,170',
+    );
+    expect(result.items).toEqual([
+      { name: '음료 A', price: 5900, quantity: 1 },
+      { name: '음료 B', price: 5800, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(10530);
+    expect(
+      parseReceiptText(
+        '합계 11,700\n결제수단별 결제내역\n01. 신용카드:\n11,700\n10,530\n할인내역\n01. 제휴할인:\n1,170',
+        [
+          '합계 11,700',
+          '결제수단별 결제내역',
+          '01. 신용카드: 10,530',
+          '할인내역',
+          '01. 제휴할인: 1,170',
+        ],
+      ).totalPrice,
+    ).toBe(10530);
+    expect(
+      parseReceiptText('합계 11,700\n신용카드 10,530\n제휴할인 1,170')
+        .totalPrice,
+    ).toBe(11700);
+  });
+
+  it('누락된 단가 제목은 수량·할인·행금액의 산술로 검증하며 번호 붙은 결제수단을 읽는다', () => {
+    const result = parseReceiptText(
+      '상품명 수량 할인 금액\n망고 A\n5,700 1개 0 5,700\nㄴ 일회용 컵 / COLD\n망고 B\n6,000 1개 0 6,000\n- ▶ 일회용 컵 / COLD / 적게 / 30 %\n합계 11,700\n받은금액 11,700\n결제수단별 결제내역\n01. 신용 카드 : 10,530\n할인 내역\n01. 제휴 할인 : 1,170',
+    );
+    expect(result.items).toEqual([
+      { name: '망고 A', price: 5700, quantity: 1 },
+      { name: '망고 B', price: 6000, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(10530);
+    expect(
+      parseReceiptText(
+        '상품명 수량 할인 금액\n망고 5,700 2개 0 5,700\n합계 5,700',
+      ).items,
+    ).toEqual([]);
+  });
+
+  it('상위 상품과 하위 옵션이 구분된 POS의 수량·행금액을 인식한다', () => {
+    const result = parseReceiptText(
+      '* 과자 6 팩 1 20,100\n과자 6 팩 -3,100\n>> 파이 2\n>> 도넛 1\n* 라떼 6,200\n>> 매장 컵 1 0\n결제금액 23,200',
+    );
+    expect(result.items).toEqual([
+      { name: '과자 6 팩', price: 17000, quantity: 1 },
+      { name: '라떼', price: 6200, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(23200);
+    expect(parseReceiptText('* 우유 2 3,000\n합계 3,000').items).toEqual([]);
+  });
+
+  it('금액 다음 줄에 이어진 열린 괄호의 상품명을 마저 연결한다', () => {
+    expect(
+      parseReceiptText(
+        '메뉴 수량 금액\n+ 까르보불닭볶음면 (비조리컵 1 2,500\n라면)\n주문금액 2,500',
+      ).items,
+    ).toEqual([
+      { name: '까르보불닭볶음면 (비조리컵 라면)', price: 2500, quantity: 1 },
+    ]);
+  });
+
+  it('0원으로 표시된 조리 옵션을 다음 유료 상품명에 붙이지 않는다', () => {
+    expect(
+      parseReceiptText(
+        '상품 단가 수량 금액\n떡볶이 17,500 1 17,500\n-2인 1 (0)\n-조리 1 (0)\n-순한맛 1 (0)\n찰순대 4,000 1 4,000\n합계 21,500',
+      ).items,
+    ).toEqual([
+      { name: '떡볶이', price: 17500, quantity: 1 },
+      { name: '찰순대', price: 4000, quantity: 1 },
+    ]);
+  });
+
+  it('상품코드 헤더·공백 별표·내부 코드는 숫자 규격과 구분한다', () => {
+    const result = parseReceiptText(
+      '예시마트\n상품 코드 단가 수량 금액\n001 당근\n$ * 214031 1,980 1 1,980\n002 콜라비\n$ * 211183 980 1 980\n003 종량제 20L\n* 2200000000000 600 1 600\n합계 3,560',
+    );
+    expect(result.items).toEqual([
+      { name: '당근', price: 1980, quantity: 1 },
+      { name: '콜라비', price: 980, quantity: 1 },
+      { name: '종량제 20L', price: 600, quantity: 1 },
+    ]);
+    expect(result.totalPrice).toBe(3560);
+  });
+
+  it('분리된 할인액·카드청구액 라벨도 동일한 산술 검증을 거친다', () => {
+    expect(
+      parseReceiptText(
+        '상품명 금액\n물티슈 3,900\n총합계액\n3,900\n총할인액\n-780\n결제\n3,120',
+      ).items,
+    ).toEqual([{ name: '물티슈', price: 3120, quantity: 1 }]);
+    expect(
+      parseReceiptText(
+        '합계 11,700\n결제수단별 결제내역\n신용카드\n10,530\n제휴할인\n1,170',
+      ).totalPrice,
+    ).toBe(10530);
+    expect(
+      parseReceiptText(
+        '합계 11,700\n결제수단별 결제내역\n신용카드 10,000\n제휴할인 1,170',
+      ).totalPrice,
+    ).toBe(11700);
+  });
 });

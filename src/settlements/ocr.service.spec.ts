@@ -67,7 +67,7 @@ describe('OcrService failures', () => {
           documentTextDetection: detect,
         }) as unknown as ImageAnnotatorClient,
     );
-    detect.mockResolvedValue([{}]);
+    detect.mockReset().mockResolvedValue([{}]);
   });
   afterEach(() => {
     jest.restoreAllMocks();
@@ -177,6 +177,7 @@ describe('OcrService failures', () => {
       storeName: '가치마트',
       items: [{ name: '우유', price: 1500, quantity: 1 }],
       totalPrice: 1500,
+      currency: 'KRW',
     });
     expect(successLog).toHaveBeenCalledWith('OCR_RESULT items=1');
     expect(JSON.stringify(successLog.mock.calls)).not.toContain('가치마트');
@@ -190,14 +191,109 @@ describe('OcrService failures', () => {
     '商品 ¥395\n合計 ¥395',
     '商品 ￥395\n合計 ￥395',
     '商品 395 円\n원 395',
-    'Item $12\nTOTAL $12',
-    'Item EUR 12',
     '領 収 書\n合 計 395',
-  ])('does not return foreign currency amounts as won items', async (text) => {
+    'Coffee 100\nTotal JPY100',
+    'Coffee 100\nTotal jpy 100',
+    'Coffee 100\nTotal 100JPY',
+  ])(
+    'recognizes yen receipts with a Japanese-only second pass',
+    async (text) => {
+      detect
+        .mockResolvedValueOnce([{ fullTextAnnotation: { text } }])
+        .mockResolvedValueOnce([
+          {
+            fullTextAnnotation: {
+              text: 'テスト店\n牛乳 ¥198\n@99×2個\n合計 ¥198',
+            },
+          },
+        ]);
+      expect(await service().parseReceipt('fixture.png')).toEqual({
+        storeName: 'テスト店',
+        items: [{ name: '牛乳', price: 99, quantity: 2 }],
+        totalPrice: 198,
+        currency: 'JPY',
+      });
+      expect(detect).toHaveBeenCalledTimes(2);
+      for (const [index, languageHints] of [
+        ['ko', 'en'],
+        ['ja', 'en'],
+      ].entries()) {
+        expect(detect).toHaveBeenNthCalledWith(index + 1, {
+          image: { content: Buffer.from('fixture image') },
+          imageContext: { languageHints },
+        });
+      }
+      expect(successLog).toHaveBeenCalledWith(
+        'OCR_RESULT currency=JPY items=1',
+      );
+      expect(JSON.stringify(successLog.mock.calls)).not.toContain('牛乳');
+    },
+  );
+
+  it('keeps an adjacent lowercase ISO yen result out of the KRW branch', async () => {
+    detect.mockResolvedValue([
+      { fullTextAnnotation: { text: 'Coffee 100\nTotal jpy100' } },
+    ]);
+    expect(await service().parseReceipt('fixture.png')).toMatchObject({
+      currency: 'JPY',
+    });
+    expect(detect).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    'Item $12\nTOTAL $12',
+    'Item USD 12',
+    'Item EUR 12',
+    'Item €12',
+    '商品 CNY 12',
+    '商品 RMB 12',
+    '商品 12元',
+  ])('rejects other currencies before a Japanese retry', async (text) => {
     detect.mockResolvedValue([{ fullTextAnnotation: { text } }]);
     await expectFailure(service(), 'OCR_CURRENCY_UNSUPPORTED', 422);
+    expect(detect).toHaveBeenCalledTimes(1);
     expect(successLog).not.toHaveBeenCalled();
   });
+
+  it('preserves a provider failure during the Japanese pass without a won fallback', async () => {
+    detect
+      .mockResolvedValueOnce([
+        { fullTextAnnotation: { text: '領収書\n牛乳 ¥198\n合計 ¥198' } },
+      ])
+      .mockRejectedValueOnce({ code: 14, message: privateValue });
+    await expectFailure(service(), 'OCR_CONNECTION_FAILED');
+    expect(detect).toHaveBeenCalledTimes(2);
+    expect(successLog).not.toHaveBeenCalled();
+  });
+
+  it('keeps an empty Japanese follow-up marked as yen instead of returning the first-pass amounts as won', async () => {
+    detect
+      .mockResolvedValueOnce([
+        { fullTextAnnotation: { text: '領収書\n牛乳 ¥198\n合計 ¥198' } },
+      ])
+      .mockResolvedValueOnce([{}]);
+    expect(await service().parseReceipt('fixture.png')).toEqual({
+      storeName: null,
+      items: [],
+      totalPrice: null,
+      currency: 'JPY',
+    });
+    expect(detect).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['우유 1,500\n결제금액 1,500원', 'Item USD 12'])(
+    'rejects a conflicting Japanese follow-up instead of returning won items',
+    async (text) => {
+      detect
+        .mockResolvedValueOnce([
+          { fullTextAnnotation: { text: '領収書\n合計 ¥198' } },
+        ])
+        .mockResolvedValueOnce([{ fullTextAnnotation: { text } }]);
+      await expectFailure(service(), 'OCR_CURRENCY_UNSUPPORTED', 422);
+      expect(detect).toHaveBeenCalledTimes(2);
+      expect(successLog).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps a Japanese product name on a Korean receipt without treating it as a currency marker', async () => {
     detect.mockResolvedValue([
@@ -210,7 +306,9 @@ describe('OcrService failures', () => {
     expect(await service().parseReceipt('fixture.png')).toMatchObject({
       items: [{ name: '말차 Matcha 抹茶', price: 1500, quantity: 1 }],
       totalPrice: 1500,
+      currency: 'KRW',
     });
+    expect(detect).toHaveBeenCalledTimes(1);
   });
 
   it('실제 응답의 붙은 열과 낮은 신뢰도 숫자를 구분해 일곱 품목·30720원을 보존한다', async () => {
@@ -317,6 +415,7 @@ describe('OcrService failures', () => {
       storeName: '예시마트',
       items: [{ name: '우유', price: 1500, quantity: 2 }],
       totalPrice: 3000,
+      currency: 'KRW',
     });
     expect(successLog).toHaveBeenCalledWith('OCR_RESULT items=1');
     for (const value of [receiptMarker, '예시마트', '예시직원', privateValue]) {
@@ -324,5 +423,74 @@ describe('OcrService failures', () => {
         JSON.stringify([successLog.mock.calls, errorLog.mock.calls]),
       ).not.toContain(value);
     }
+  });
+
+  it('keeps tilted numeric columns with their own product instead of the following row', async () => {
+    const rows: Array<Array<[string, number]>> = [
+      [['예시마트', 0]],
+      [
+        ['상품명', 0],
+        ['단가', 140],
+        ['수량', 240],
+        ['금액', 340],
+      ],
+      [
+        ['우유', 0],
+        ['1,500', 140],
+        ['1', 240],
+        ['1,500', 340],
+      ],
+      [
+        ['빵', 0],
+        ['2,000', 140],
+        ['1', 240],
+        ['2,000', 340],
+      ],
+      [
+        ['치즈', 0],
+        ['2,500', 140],
+        ['1', 240],
+        ['2,500', 340],
+      ],
+      [
+        ['합계', 0],
+        ['6,000', 340],
+      ],
+    ];
+    const slope = 0.08;
+    const paragraphs = rows.map((row, rowIndex) => ({
+      words: row.map(([text, x]) => {
+        const y = rowIndex * 24 + slope * x;
+        const width = text.length * 8;
+        return {
+          symbols: [...text].map((text) => ({ text })),
+          boundingBox: {
+            vertices: [
+              { x, y },
+              { x: x + width, y: y + slope * width },
+              { x: x + width, y: y + slope * width + 8 },
+              { x, y: y + 8 },
+            ],
+          },
+        };
+      }),
+    }));
+    detect.mockResolvedValue([
+      {
+        fullTextAnnotation: {
+          text: '예시마트\n상품명 단가 수량 금액\n우유\n빵\n치즈\n합계 6,000',
+          pages: [{ blocks: [{ paragraphs }] }],
+        },
+      },
+    ]);
+    expect(await service().parseReceipt('fixture.png')).toMatchObject({
+      items: [
+        { name: '우유', price: 1500, quantity: 1 },
+        { name: '빵', price: 2000, quantity: 1 },
+        { name: '치즈', price: 2500, quantity: 1 },
+      ],
+      totalPrice: 6000,
+      currency: 'KRW',
+    });
   });
 });
