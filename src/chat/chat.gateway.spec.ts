@@ -1,4 +1,4 @@
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import type { Socket } from 'socket.io';
 import { AuthService } from '../auth/auth.service';
 import { ChatMessage } from '../chat-message/entities/chat-message.entity';
@@ -12,6 +12,150 @@ const createPushService = () =>
   }) as unknown as PushService;
 
 describe('ChatGateway', () => {
+  it('알림방은 클라이언트가 요청한 사용자 대신 검증된 JWT 사용자만 입장한다', async () => {
+    const gateway = new ChatGateway(
+      {} as Repository<ChatMessage>,
+      {} as Repository<PartyMember>,
+      {
+        verifyAccessToken: jest.fn().mockReturnValue({ sub: 5 }),
+      } as unknown as AuthService,
+      createPushService(),
+    );
+    const join = jest.fn().mockResolvedValue(undefined);
+    const client = {
+      handshake: { auth: { token: 'fixture-token', userId: 999 }, headers: {} },
+      data: {},
+      join,
+      emit: jest.fn(),
+      disconnect: jest.fn(),
+    } as unknown as Socket;
+    await gateway.handleConnection(client);
+    expect(join).toHaveBeenCalledTimes(1);
+    expect(join).toHaveBeenCalledWith('user_5');
+    expect(client.data).toEqual({ user: { id: 5 } });
+  });
+
+  it.each([
+    null,
+    { sub: '5' },
+    { sub: -1 },
+    { sub: Number.MAX_SAFE_INTEGER + 1 },
+  ])(
+    '유효한 사용자 없는 연결은 알림방에 들어가지 않는다: %p',
+    async (payload) => {
+      const gateway = new ChatGateway(
+        {} as Repository<ChatMessage>,
+        {} as Repository<PartyMember>,
+        {
+          verifyAccessToken: jest.fn().mockImplementation(() => {
+            if (!payload) throw new Error('fixture auth failure');
+            return payload;
+          }),
+        } as unknown as AuthService,
+        createPushService(),
+      );
+      const join = jest.fn();
+      const disconnect = jest.fn();
+      await gateway.handleConnection({
+        handshake: { auth: { token: 'fixture-token' }, headers: {} },
+        data: {},
+        join,
+        emit: jest.fn(),
+        disconnect,
+      } as unknown as Socket);
+      expect(join).not.toHaveBeenCalled();
+      expect(disconnect).toHaveBeenCalledWith(true);
+    },
+  );
+
+  it('저장한 새 메시지는 승인·음소거 해제·발신자 제외 대상의 사용자방에 ID만 알린다', async () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({ emit });
+    const find = jest
+      .fn()
+      .mockResolvedValue([{ userId: 2 }, { userId: 3 }, { userId: 2 }]);
+    const save = jest.fn().mockResolvedValue({ id: 71 });
+    const gateway = new ChatGateway(
+      {
+        create: jest.fn((value: Partial<ChatMessage>) => value),
+        save,
+      } as unknown as Repository<ChatMessage>,
+      {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ user: { id: 5, nickname: '방장' } }),
+        find,
+      } as unknown as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    gateway.server = { to } as never;
+    const client = {
+      data: { user: { id: 5 } },
+      rooms: new Set(['party_9']),
+      emit: jest.fn(),
+    } as unknown as Socket;
+    await expect(
+      gateway.handleMessage(
+        { partyId: 9, message: 'PRIVATE_BANK_MESSAGE_MUST_NOT_ENTER_ALERT' },
+        client,
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(find).toHaveBeenCalledWith({
+      where: { partyId: 9, status: 'APPROVED', isMuted: false, userId: Not(5) },
+      select: { userId: true },
+    });
+    expect(save.mock.invocationCallOrder[0]).toBeLessThan(
+      find.mock.invocationCallOrder[0],
+    );
+    expect(to).toHaveBeenCalledWith(['user_2', 'user_3']);
+    const notice: unknown = emit.mock.calls.find(
+      ([event]) => event === 'chatNotification',
+    );
+    expect(notice).toEqual(['chatNotification', { partyId: 9, messageId: 71 }]);
+    expect(JSON.stringify(notice)).not.toContain('PRIVATE_BANK');
+  });
+
+  it('알림 조회 실패는 저장된 채팅을 실패로 표시하지 않고 실패한 저장은 알리지 않는다', async () => {
+    const emit = jest.fn();
+    const find = jest
+      .fn()
+      .mockRejectedValue(new Error('fixture notification failure'));
+    const save = jest.fn().mockResolvedValue({ id: 71 });
+    const gateway = new ChatGateway(
+      {
+        create: jest.fn((value: Partial<ChatMessage>) => value),
+        save,
+      } as unknown as Repository<ChatMessage>,
+      {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ user: { id: 5, nickname: '방장' } }),
+        find,
+      } as unknown as Repository<PartyMember>,
+      {} as AuthService,
+      createPushService(),
+    );
+    gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
+    const client = {
+      data: { user: { id: 5 } },
+      rooms: new Set(['party_9']),
+      emit: jest.fn(),
+    } as unknown as Socket;
+    await expect(
+      gateway.handleMessage({ partyId: 9, message: 'fixture' }, client),
+    ).resolves.toEqual({ ok: true });
+    expect(find).toHaveBeenCalledTimes(1);
+    expect(
+      emit.mock.calls.filter(([event]) => event === 'chatNotification'),
+    ).toHaveLength(0);
+    find.mockClear();
+    save.mockRejectedValueOnce(new Error('fixture write failure'));
+    await expect(
+      gateway.handleMessage({ partyId: 9, message: 'fixture' }, client),
+    ).resolves.toMatchObject({ ok: false });
+    expect(find).not.toHaveBeenCalled();
+  });
   it('모임 갱신은 해당 모임방에 모임 ID만 전달한다', () => {
     const gateway = new ChatGateway(
       {} as Repository<ChatMessage>,

@@ -3,12 +3,14 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ImageAnnotatorClient, protos } from '@google-cloud/vision';
 import * as fs from 'fs';
 import * as path from 'path';
 import { parseReceiptText } from './receipt-parser';
+import { parseJapaneseReceiptText } from './japanese-receipt-parser';
 
 export interface OcrItem {
   name: string;
@@ -20,6 +22,7 @@ export interface OcrResult {
   storeName: string | null;
   items: OcrItem[];
   totalPrice: number | null;
+  currency?: 'KRW' | 'JPY';
 }
 
 interface GoogleServiceAccountCredentials {
@@ -67,11 +70,54 @@ export class OcrService {
     } catch {
       throw this.unavailable('OCR_FILE_UNREADABLE');
     }
+    let annotation = await this.detectText(client, content, ['ko', 'en']);
+    let fullText = annotation?.text?.trim() ?? '';
+    if (!fullText) {
+      this.logger.warn('OCR_NO_TEXT');
+      return this.emptyResult();
+    }
+    this.rejectUnsupportedCurrency(fullText);
+    const currencyText = fullText.normalize('NFKC');
+    const japanese =
+      /¥\s*\d|\d\s*円|\bJPY(?=\b|\d)|\d\s*JPY\b/i.test(currencyText) ||
+      /合計|小計|消費税|領収書/.test(currencyText.replace(/\s/g, ''));
+    if (japanese) {
+      // 일본 영수증만 다시 인식해 기존 한국어 인식 결과를 바꾸지 않는다.
+      annotation = await this.detectText(client, content, ['ja', 'en']);
+      fullText = annotation?.text?.trim() ?? '';
+      this.rejectUnsupportedCurrency(fullText);
+      const japaneseText = fullText.normalize('NFKC');
+      if (
+        fullText &&
+        !/[ぁ-ヿ]|円|\bJPY(?=\b|\d)|\d\s*JPY\b|合計|領収書/i.test(japaneseText)
+      ) {
+        throw this.unsupportedCurrency();
+      }
+      const result = parseJapaneseReceiptText(
+        fullText,
+        annotation ? this.extractVisualLines(annotation) : undefined,
+      );
+      this.logger.log(`OCR_RESULT currency=JPY items=${result.items.length}`);
+      return { ...result, currency: 'JPY' };
+    }
+    const result = parseReceiptText(
+      fullText,
+      annotation ? this.extractVisualLines(annotation) : undefined,
+    );
+    this.logger.log(`OCR_RESULT items=${result.items.length}`);
+    return { ...result, currency: 'KRW' };
+  }
+
+  private async detectText(
+    client: ImageAnnotatorClient,
+    content: Buffer,
+    languageHints: string[],
+  ): Promise<protos.google.cloud.vision.v1.ITextAnnotation | null | undefined> {
     let response: protos.google.cloud.vision.v1.IAnnotateImageResponse;
     try {
       [response] = await client.documentTextDetection({
         image: { content },
-        imageContext: { languageHints: ['ko', 'en'] },
+        imageContext: { languageHints },
       });
     } catch (error: unknown) {
       throw this.providerFailure(error);
@@ -79,18 +125,27 @@ export class OcrService {
     if (response.error?.code) {
       throw this.providerFailure(response.error);
     }
-    const annotation = response.fullTextAnnotation;
-    const fullText = annotation?.text?.trim() ?? '';
-    if (!fullText) {
-      this.logger.warn('OCR_NO_TEXT');
-      return this.emptyResult();
+    return response.fullTextAnnotation;
+  }
+
+  private rejectUnsupportedCurrency(text: string): void {
+    const currencyText = text.normalize('NFKC');
+    if (
+      /[$€£]\s*\d|\b(?:USD|EUR|CNY|RMB|GBP)\s*\d|\d\s*(?:元|人民币|人民幣)/i.test(
+        currencyText,
+      )
+    ) {
+      throw this.unsupportedCurrency();
     }
-    const visualLines = annotation
-      ? this.extractVisualLines(annotation)
-      : undefined;
-    const result = parseReceiptText(fullText, visualLines);
-    this.logger.log(`OCR_RESULT items=${result.items.length}`);
-    return result;
+  }
+
+  private unsupportedCurrency(): UnprocessableEntityException {
+    this.logger.warn('OCR_CURRENCY_UNSUPPORTED');
+    return new UnprocessableEntityException({
+      code: 'OCR_CURRENCY_UNSUPPORTED',
+      message:
+        '지원하지 않는 통화입니다. 원화 정산 금액으로 자동 입력하지 않습니다.',
+    });
   }
 
   private unavailable(
@@ -202,6 +257,7 @@ export class OcrService {
     annotation: protos.google.cloud.vision.v1.ITextAnnotation,
   ): string[] {
     const words: VisualWord[] = [];
+    const baselineSlopes: number[] = [];
 
     for (const page of annotation.pages ?? []) {
       for (const block of page.blocks ?? []) {
@@ -210,6 +266,14 @@ export class OcrService {
             const text = (word.symbols ?? [])
               .map((symbol) => symbol.text ?? '')
               .join('');
+            // 배경 무늬를 숫자로 오인한 낮은 신뢰도의 값은 정산에 사용하지 않는다.
+            if (
+              /^[\d,]+$/.test(text) &&
+              word.confidence != null &&
+              word.confidence < 0.5
+            ) {
+              continue;
+            }
             const vertices = word.boundingBox?.vertices ?? [];
             if (!text || vertices.length === 0) {
               continue;
@@ -219,17 +283,66 @@ export class OcrService {
             const yCoordinates = vertices.map((vertex) => vertex.y ?? 0);
             const minY = Math.min(...yCoordinates);
             const maxY = Math.max(...yCoordinates);
-            words.push({
-              text,
-              x: Math.min(...xCoordinates),
-              centerY: (minY + maxY) / 2,
-              height: Math.max(maxY - minY, 1),
-            });
+            const height = Math.max(maxY - minY, 1);
+            const width = Math.max(...xCoordinates) - Math.min(...xCoordinates);
+            if (
+              /^[\d,]{3,}$/.test(text) &&
+              width > height &&
+              vertices.length === 4
+            ) {
+              const dx = (vertices[1].x ?? 0) - (vertices[0].x ?? 0);
+              const slope = dx
+                ? ((vertices[1].y ?? 0) - (vertices[0].y ?? 0)) / dx
+                : 0;
+              if (Math.abs(slope) < 0.25) baselineSlopes.push(slope);
+            }
+            let part = '';
+            let partX = Math.min(...xCoordinates);
+            let previousRight: number | undefined;
+            for (const symbol of word.symbols ?? []) {
+              const bounds = symbol.boundingBox?.vertices ?? [];
+              const left = bounds.length
+                ? Math.min(...bounds.map((vertex) => vertex.x ?? 0))
+                : undefined;
+              // SDK가 수량과 금액을 한 단어로 합쳐도 실제 열 사이의 간격은 남아 있다.
+              if (
+                part &&
+                left != null &&
+                previousRight != null &&
+                left - previousRight > height * 0.8
+              ) {
+                words.push({
+                  text: part,
+                  x: partX,
+                  centerY: (minY + maxY) / 2,
+                  height,
+                });
+                part = '';
+              }
+              if (!part && left != null) partX = left;
+              part += symbol.text ?? '';
+              previousRight = bounds.length
+                ? Math.max(...bounds.map((vertex) => vertex.x ?? 0))
+                : undefined;
+            }
+            if (part)
+              words.push({
+                text: part,
+                x: partX,
+                centerY: (minY + maxY) / 2,
+                height,
+              });
           }
         }
       }
     }
 
+    // 숫자 열의 기울기를 제거해 같은 상품의 금액이 다음 행에 붙지 않게 한다.
+    if (baselineSlopes.length >= 3) {
+      baselineSlopes.sort((a, b) => a - b);
+      const slope = baselineSlopes[Math.floor(baselineSlopes.length / 2)];
+      for (const word of words) word.centerY -= slope * word.x;
+    }
     words.sort((a, b) => a.centerY - b.centerY || a.x - b.x);
     const lines: VisualLine[] = [];
 
