@@ -27,6 +27,10 @@ describe('HTTP cookie session contract', () => {
   const jwt = new JwtService({ secret });
   const accessToken = jwt.sign(payload, { expiresIn: '1h' });
   const refreshToken = jwt.sign({ sub: user.id }, { expiresIn: '1d' });
+  const users = {
+    findOne: jest.fn().mockResolvedValue(user),
+    updateLocation: jest.fn().mockResolvedValue({ success: true }),
+  };
   let app: INestApplication<Server>;
   let previousNodeEnv: string | undefined;
 
@@ -44,7 +48,7 @@ describe('HTTP cookie session contract', () => {
         },
         {
           provide: UsersService,
-          useValue: { findOne: jest.fn().mockResolvedValue(user) },
+          useValue: users,
         },
         { provide: PasswordResetService, useValue: {} },
         {
@@ -147,5 +151,68 @@ describe('HTTP cookie session contract', () => {
         .set('Cookie', `accessToken=${token}`)
         .expect(401);
     }
+  });
+
+  it('treats malformed cookie encoding as unauthenticated and still allows a valid bearer token', async () => {
+    await request(app.getHttpServer())
+      .get('/api/users/profile')
+      .set('Cookie', 'accessToken=%E0%A4%A')
+      .expect(401);
+    await request(app.getHttpServer())
+      .get('/api/users/profile')
+      .set('Cookie', 'accessToken=%E0%A4%A')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+  });
+
+  it('rejects unauthenticated profile writes and privilege or identity injection', async () => {
+    users.updateLocation.mockClear();
+    await request(app.getHttpServer())
+      .patch('/api/users/profile')
+      .send({ nickname: '변경 시도' })
+      .expect(401);
+    for (const injected of [
+      { role: 'ADMIN' },
+      { isAdmin: true },
+      { id: 2 },
+      { userId: 2 },
+      { email: 'other@example.test' },
+      { password: 'Other123' },
+      { treeScore: 100 },
+      { refreshToken: 'fixture-injection' },
+    ]) {
+      await request(app.getHttpServer())
+        .patch('/api/users/profile')
+        .set('Cookie', `accessToken=${accessToken}`)
+        .send(injected)
+        .expect(400);
+    }
+    expect(users.updateLocation).not.toHaveBeenCalled();
+    await request(app.getHttpServer())
+      .patch('/api/users/profile')
+      .set('Cookie', `accessToken=${accessToken}`)
+      .send({ nickname: '정상 변경' })
+      .expect(200);
+    expect(users.updateLocation).toHaveBeenCalledWith(user.id, {
+      nickname: '정상 변경',
+    });
+  });
+
+  it('keeps another member contact, bank and credential fields out of public HTTP profiles', async () => {
+    users.findOne.mockResolvedValueOnce({
+      id: 2,
+      email: 'private@example.test',
+      nickname: '공개 닉네임',
+      password: 'PRIVATE_PASSWORD_MARKER',
+      phoneNumber: '01000000000',
+      birthDate: new Date('1990-01-01'),
+      bankName: 'Fixture bank',
+      accountNumber: 'PRIVATE_ACCOUNT_MARKER',
+      refreshToken: 'PRIVATE_TOKEN_MARKER',
+    });
+    const response = await request(app.getHttpServer())
+      .get('/api/users/2')
+      .expect(200);
+    expect(response.body).toEqual({ id: 2, nickname: '공개 닉네임' });
   });
 });

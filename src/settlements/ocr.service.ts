@@ -79,7 +79,7 @@ export class OcrService {
     this.rejectUnsupportedCurrency(fullText);
     const currencyText = fullText.normalize('NFKC');
     const japanese =
-      /¥\s*\d|\d\s*円|\bJPY(?=\b|\d)|\d\s*JPY\b/i.test(currencyText) ||
+      /¥\s*\d|\d\s*[¥円]|\bJPY(?=\b|\d)|\d\s*JPY\b/i.test(currencyText) ||
       /合計|小計|消費税|領収書/.test(currencyText.replace(/\s/g, ''));
     if (japanese) {
       // 일본 영수증만 다시 인식해 기존 한국어 인식 결과를 바꾸지 않는다.
@@ -131,7 +131,7 @@ export class OcrService {
   private rejectUnsupportedCurrency(text: string): void {
     const currencyText = text.normalize('NFKC');
     if (
-      /[$€£]\s*\d|\b(?:USD|EUR|CNY|RMB|GBP)\s*\d|\d\s*(?:元|人民币|人民幣)/i.test(
+      /[$€£]\s*\d|\d\s*[$€£]|\b(?:USD|EUR|CNY|RMB|GBP)\s*\d|\d\s*(?:USD|EUR|CNY|RMB|GBP)\b|\d\s*(?:元|人民币|人民幣)/i.test(
         currencyText,
       )
     ) {

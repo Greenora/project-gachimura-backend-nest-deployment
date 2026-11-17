@@ -169,6 +169,19 @@ describe('OcrService failures', () => {
     });
     expect(errorLog).not.toHaveBeenCalled();
   });
+  it.each(['', ' \n\t '])(
+    'keeps an empty text annotation separate from a service failure',
+    async (text) => {
+      detect.mockResolvedValue([{ fullTextAnnotation: { text } }]);
+      expect(await service().parseReceipt('fixture.png')).toEqual({
+        storeName: null,
+        items: [],
+        totalPrice: null,
+      });
+      expect(detect).toHaveBeenCalledTimes(1);
+      expect(errorLog).not.toHaveBeenCalled();
+    },
+  );
   it('retains parsed receipt results without logging receipt text', async () => {
     detect.mockResolvedValue([
       { fullTextAnnotation: { text: '가치마트\n우유 1,500\n결제금액 1,500' } },
@@ -195,6 +208,7 @@ describe('OcrService failures', () => {
     'Coffee 100\nTotal JPY100',
     'Coffee 100\nTotal jpy 100',
     'Coffee 100\nTotal 100JPY',
+    'Coffee 100\nTotal 100¥',
   ])(
     'recognizes yen receipts with a Japanese-only second pass',
     async (text) => {
@@ -248,6 +262,14 @@ describe('OcrService failures', () => {
     '商品 CNY 12',
     '商品 RMB 12',
     '商品 12元',
+    'Item 1,200\nTOTAL 1,200 USD',
+    'Item 1,200\nTOTAL 1,200eur',
+    'Item 1,200\nTOTAL 1,200 CNY',
+    'Item 1,200\nTOTAL 1,200 RMB',
+    'Item 1,200\nTOTAL 1,200 GBP',
+    'Item 1,200\nTOTAL 1,200$',
+    'Item 1,200\nTOTAL 1,200€',
+    'Item 1,200\nTOTAL 1,200£',
   ])('rejects other currencies before a Japanese retry', async (text) => {
     detect.mockResolvedValue([{ fullTextAnnotation: { text } }]);
     await expectFailure(service(), 'OCR_CURRENCY_UNSUPPORTED', 422);
@@ -262,6 +284,17 @@ describe('OcrService failures', () => {
       ])
       .mockRejectedValueOnce({ code: 14, message: privateValue });
     await expectFailure(service(), 'OCR_CONNECTION_FAILED');
+    expect(detect).toHaveBeenCalledTimes(2);
+    expect(successLog).not.toHaveBeenCalled();
+  });
+
+  it('preserves an image-level failure during the Japanese pass without a won fallback', async () => {
+    detect
+      .mockResolvedValueOnce([
+        { fullTextAnnotation: { text: '領収書\n牛乳 ¥198\n合計 ¥198' } },
+      ])
+      .mockResolvedValueOnce([{ error: { code: 3, message: privateValue } }]);
+    await expectFailure(service(), 'OCR_PROVIDER_ERROR', 502);
     expect(detect).toHaveBeenCalledTimes(2);
     expect(successLog).not.toHaveBeenCalled();
   });
@@ -294,6 +327,22 @@ describe('OcrService failures', () => {
       expect(successLog).not.toHaveBeenCalled();
     },
   );
+
+  it('does not treat a currency code inside a product name as a currency amount', async () => {
+    detect.mockResolvedValue([
+      {
+        fullTextAnnotation: {
+          text: '예시마트\nUSD Edition 케이블 1,200\n결제금액 1,200원',
+        },
+      },
+    ]);
+    expect(await service().parseReceipt('fixture.png')).toMatchObject({
+      items: [{ name: 'USD Edition 케이블', price: 1200, quantity: 1 }],
+      totalPrice: 1200,
+      currency: 'KRW',
+    });
+    expect(detect).toHaveBeenCalledTimes(1);
+  });
 
   it('keeps a Japanese product name on a Korean receipt without treating it as a currency marker', async () => {
     detect.mockResolvedValue([

@@ -82,6 +82,15 @@ async function main() {
       return { id: created.id, partyId: party.id, itemId };
     }
 
+    const concurrentParty = await repo(Party).save({ hostId: 1, title: 'Concurrent creation fixture', capacity: 3, currentCount: 1 });
+    const beforeCreateUpdates = updates.length;
+    const concurrentCreated = await Promise.all(Array.from({ length: 4 }, () => service.create(1, concurrentParty.id)));
+    assert.equal(new Set(concurrentCreated.map(value => value.id)).size, 1, 'parallel creation requests return the same active settlement');
+    assert.equal(await repo(Settlement).countBy({ partyId: concurrentParty.id }), 1, 'parallel creation writes only one settlement');
+    assert.equal(updates.length - beforeCreateUpdates, 1, 'repeated creation announces a new settlement only once');
+    await rejectsStatus(service.create(2, concurrentParty.id), 403);
+    console.log('PASS: four concurrent SQL create requests preserve one settlement and one update event.');
+
     const basic = await flow();
     assert.ok(updates.some(update => update.partyId === basic.partyId && update.settlementId === basic.id));
     await service.selectItems(basic.id, 2, { itemIds: [] });
@@ -121,6 +130,11 @@ async function main() {
     assert.equal(editable.totalAmount, 2968);
     await rejectsStatus(service.updateItems(edited.id, 1, { items: [{ id: basic.itemId, name: 'Foreign', price: 1, quantity: 1 }] }), 400);
     assert.equal((await service.findOne(edited.id, 1)).items.length, 2, 'foreign IDs fail without deletion');
+    await rejectsStatus(service.updateItems(edited.id, 1, { items: [{ name: 'Overflow item', price: 2147483647, quantity: 2 }] }), 400);
+    const afterOverflow = await service.findOne(edited.id, 1);
+    assert.equal(afterOverflow.totalAmount, 2968, 'overflow does not change the existing total');
+    assert.equal(afterOverflow.items.length, 2, 'overflow does not delete existing items');
+    assert.deepEqual(afterOverflow.items.find(item => item.id === edited.itemId).members.map(value => value.userId).sort(), [1, 2, 3], 'overflow preserves current selections');
     editable = await service.updateItems(edited.id, 1, { items: [{ id: newItem.id, name: 'New item', price: 500, quantity: 1 }] });
     assert.equal(await repo(SettlementItemMember).countBy({ itemId: edited.itemId }), 0, 'deleted item selections cascade only for that item');
     assert.equal(await repo(SettlementItemMember).countBy({ itemId: basic.itemId }), 3, 'another settlement stays untouched');
