@@ -205,9 +205,10 @@ export class SettlementsController {
         return {
           message:
             '영수증 품목을 인식하지 못했습니다. 이미지를 다시 촬영하거나 품목을 직접 입력해주세요.',
-          storeName: null,
+          storeName: ocrResult.storeName,
           items: [],
-          totalPrice: null,
+          totalPrice: ocrResult.totalPrice,
+          currency: ocrResult.currency ?? 'KRW',
         };
       }
 
@@ -216,6 +217,7 @@ export class SettlementsController {
         storeName: ocrResult.storeName,
         items: ocrResult.items,
         totalPrice: ocrResult.totalPrice,
+        currency: ocrResult.currency ?? 'KRW',
       };
     } finally {
       await fs.unlink(file.path).catch(() => undefined);

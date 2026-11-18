@@ -26,6 +26,8 @@ import { EmailVerification } from './auth/entities/email-verification.entity';
 import { minutes, ThrottlerModule } from '@nestjs/throttler';
 import { HealthModule } from './health/health.module';
 import { RecipeChatModule } from './recipe-chat/recipe-chat.module';
+import { PushModule } from './push/push.module';
+import { PushSubscription } from './push/entities/push-subscription.entity';
 
 @Module({
   imports: [
@@ -71,6 +73,7 @@ import { RecipeChatModule } from './recipe-chat/recipe-chat.module';
           CommunityPostLike,
           CommunityComment,
           EmailVerification,
+          PushSubscription,
         ],
         synchronize:
           configService.get<string>('NODE_ENV') !== 'production' &&
@@ -91,6 +94,7 @@ import { RecipeChatModule } from './recipe-chat/recipe-chat.module';
     SettlementsModule, // 정산
     CommunityModule, // 커뮤니티
     RecipeChatModule, // 레시피 챗봇
+    PushModule,
   ],
   controllers: [],
   providers: [],

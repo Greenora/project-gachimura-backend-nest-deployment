@@ -23,9 +23,10 @@ async function main() {
     const { DataSource } = require('typeorm');
     const { Schema1788318104441 } = require(process.env.BASELINE_MIGRATION_PATH || '../src/database/migrations/1788318104441-Schema');
     const { PasswordReset1790100000000 } = require('../src/database/migrations/1790100000000-PasswordReset');
-    source = new DataSource({ type: 'mysql', host: '127.0.0.1', port: Number(process.env.DB_PORT || 3307), username: process.env.DB_USERNAME || 'root', password: process.env.DB_PASSWORD, database, entities: [path.resolve('src/**/*.entity.ts')], migrations: [Schema1788318104441, PasswordReset1790100000000] });
+    const { PushSubscriptions1793750400000 } = require('../src/database/migrations/1793750400000-PushSubscriptions');
+    source = new DataSource({ type: 'mysql', host: '127.0.0.1', port: Number(process.env.DB_PORT || 3307), username: process.env.DB_USERNAME || 'root', password: process.env.DB_PASSWORD, database, entities: [path.resolve('src/**/*.entity.ts')], migrations: [Schema1788318104441, PasswordReset1790100000000, PushSubscriptions1793750400000] });
     await source.initialize();
-    assert.equal((await source.runMigrations()).length, 2);
+    assert.equal((await source.runMigrations()).length, 3);
     assert.equal((await source.runMigrations()).length, 0, 'migrations are recorded');
     const diff = await source.driver.createSchemaBuilder().log();
     assert.equal(diff.upQueries.length, 0, 'migrations must match current entities');

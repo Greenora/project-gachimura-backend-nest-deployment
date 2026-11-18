@@ -2,11 +2,13 @@ import { validate } from 'class-validator';
 import { ConfigService } from '@nestjs/config';
 import { LoginDto } from './dto/login.dto';
 import { JwtStrategy } from './jwt.strategy';
-import { AuthService } from './auth.service';
+import { AuthService, JwtPayload } from './auth.service';
 import { UsersService } from '../users/users.service';
+import { User } from '../users/entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import { Repository } from 'typeorm';
 import { EmailVerification } from './entities/email-verification.entity';
+import * as bcrypt from 'bcrypt';
 
 describe('login trust boundaries', () => {
   it('only bypasses signup email verification outside production', async () => {
@@ -57,6 +59,9 @@ describe('login trust boundaries', () => {
     expect(() =>
       strategy.validate({ sub: -1, email: 'a', nickname: 'b' }),
     ).toThrow();
+    expect(() =>
+      strategy.validate({ sub: 1, email: 'user@example.com', nickname: '' }),
+    ).toThrow();
     expect(
       strategy.validate({
         sub: 1,
@@ -65,4 +70,61 @@ describe('login trust boundaries', () => {
       }),
     ).toEqual({ id: 1, email: 'user@example.com', nickname: 'User' });
   });
+});
+
+describe('access tokens issued for legacy display names', () => {
+  const secret = 'display-name-regression-only-'.repeat(3);
+  const config = new ConfigService({ JWT_SECRET: secret });
+  const jwt = new JwtService({ secret });
+  const strategy = new JwtStrategy(config);
+  const password = 'Example123';
+  let passwordHash: string;
+
+  beforeAll(async () => {
+    passwordHash = await bcrypt.hash(password, 4);
+  });
+
+  it.each([
+    ['', undefined, '사용자'],
+    ['', '日本語の名前', '日本語の名前'],
+    [null, undefined, '사용자'],
+    [undefined, undefined, '사용자'],
+    [null, '日本語の名前', '日本語の名前'],
+    ['기존 이름', '日本語の名前', '기존 이름'],
+  ])(
+    'validates login and refresh tokens for nickname %p and Japanese name %p',
+    async (nickname, nicknameJp, expectedName) => {
+      const user = Object.assign(new User(), {
+        id: 42,
+        email: 'legacy@example.com',
+        password: passwordHash,
+        nickname,
+        nickname_jp: nicknameJp,
+      });
+      const users = {
+        findByEmail: jest.fn().mockResolvedValue(user),
+        findOne: jest.fn().mockResolvedValue(user),
+        updateRefreshToken: jest.fn(async (_id: number, token: string) => {
+          user.refreshToken = await bcrypt.hash(token, 4);
+        }),
+      };
+      const service = new AuthService(
+        users as unknown as UsersService,
+        jwt,
+        config,
+        {} as Repository<EmailVerification>,
+      );
+
+      const login = await service.login({ email: user.email, password });
+      const refreshed = await service.refresh(login.refreshToken);
+      for (const token of [login.accessToken, refreshed.accessToken]) {
+        const payload = jwt.verify<JwtPayload>(token);
+        expect(strategy.validate(payload)).toEqual({
+          id: user.id,
+          email: user.email,
+          nickname: expectedName,
+        });
+      }
+    },
+  );
 });

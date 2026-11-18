@@ -1,15 +1,39 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsDate,
   IsIn,
   IsLatitude,
   IsLongitude,
   IsOptional,
   IsString,
+  Matches,
+  MaxDate,
   MaxLength,
+  MinDate,
 } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { normalizePhone, parseBirthDate } from '../../common/member-details';
 
 export class UpdateProfileDto {
+  @ApiPropertyOptional({ example: '01012341234' })
+  @Transform(({ value }) => normalizePhone(value))
+  @IsOptional()
+  @IsString()
+  @Matches(/^0\d{8,10}$/, {
+    message: '전화번호는 0으로 시작하는 9~11자리 숫자로 입력해주세요.',
+  })
+  phone?: string | null;
+
+  @ApiPropertyOptional({ type: String, example: '1998-01-01' })
+  @Transform(({ value }) => parseBirthDate(value))
+  @IsOptional()
+  @IsDate({ message: '생년월일을 실제 존재하는 날짜로 입력해주세요.' })
+  @MinDate(new Date(1000, 0, 1), {
+    message: '생년월일은 1000년 이후로 입력해주세요.',
+  })
+  @MaxDate(() => new Date(), { message: '생년월일은 미래 날짜일 수 없습니다.' })
+  birthdate?: Date | null;
+
   @ApiPropertyOptional({ example: 35.8714 })
   @IsOptional()
   @Type(() => Number)

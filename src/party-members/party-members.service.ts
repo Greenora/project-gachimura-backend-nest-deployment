@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,6 +14,8 @@ import { toPublicUser } from '../users/user-response.mapper';
 
 @Injectable()
 export class PartyMembersService {
+  private readonly logger = new Logger(PartyMembersService.name);
+
   constructor(
     @InjectRepository(PartyMember)
     private partyMemberRepository: Repository<PartyMember>,
@@ -20,6 +23,14 @@ export class PartyMembersService {
     private partyRepository: Repository<Party>,
     private chatGateway: ChatGateway,
   ) {}
+
+  private notifyUpdated(partyId: number) {
+    try {
+      this.chatGateway.notifyPartyUpdated(partyId);
+    } catch {
+      this.logger.warn('모임 상태 갱신을 알리지 못했습니다.');
+    }
+  }
 
   private async findPartyOrThrow(partyId: number) {
     const party = await this.partyRepository.findOne({
@@ -101,7 +112,9 @@ export class PartyMembersService {
       status: 'PENDING',
     });
 
-    return this.partyMemberRepository.save(newMember);
+    const saved = await this.partyMemberRepository.save(newMember);
+    this.notifyUpdated(partyId);
+    return saved;
   }
 
   private async syncPartyCurrentCount(partyId: number) {
@@ -135,9 +148,14 @@ export class PartyMembersService {
     member.status = status;
     const saved = await this.partyMemberRepository.save(member);
 
+    if (status !== 'APPROVED') {
+      await this.chatGateway.removeMemberFromRoom(partyId, userId);
+    }
+
     if (previousStatus !== status) {
       await this.syncPartyCurrentCount(partyId);
     }
+    this.notifyUpdated(partyId);
 
     // 승인되었을 때 시스템 메시지 전송
     if (status === 'APPROVED' && previousStatus !== 'APPROVED') {
@@ -167,6 +185,15 @@ export class PartyMembersService {
       relations: { user: true },
     });
 
+    const deleteResult = await this.partyMemberRepository.delete({
+      partyId,
+      userId,
+    });
+    await this.chatGateway.removeMemberFromRoom(partyId, userId);
+    if (member?.status === 'APPROVED') {
+      await this.syncPartyCurrentCount(partyId);
+    }
+    this.notifyUpdated(partyId);
     if (member?.status === 'APPROVED') {
       const nicknameKo = member.user?.nickname || '알 수 없음';
       const nicknameJp = member.user?.nickname_jp || nicknameKo;
@@ -174,14 +201,6 @@ export class PartyMembersService {
         partyId,
         `__SYS__|LEAVE|${encodeURIComponent(nicknameKo)}|${encodeURIComponent(nicknameJp)}`,
       );
-    }
-
-    const deleteResult = await this.partyMemberRepository.delete({
-      partyId,
-      userId,
-    });
-    if (member?.status === 'APPROVED') {
-      await this.syncPartyCurrentCount(partyId);
     }
     return deleteResult;
   }

@@ -1,12 +1,17 @@
 import {
   IsEmail,
+  IsDate,
   IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
+  MaxDate,
+  MinDate,
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { normalizePhone, parseBirthDate } from '../../common/member-details';
 
 // 회원가입 요청 데이터 (class-validator로 자동 검증)
 export class CreateUserDto {
@@ -32,19 +37,29 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({
     example: '01012345678',
-    description: '전화번호 (하이픈 없이)',
+    description: '전화번호 (하이픈·공백 허용, 저장 시 제거)',
   })
+  @Transform(({ value }) => normalizePhone(value))
   @IsOptional()
   @IsString()
-  phone?: string;
+  @Matches(/^0\d{8,10}$/, {
+    message: '전화번호는 0으로 시작하는 9~11자리 숫자로 입력해주세요.',
+  })
+  phone?: string | null;
 
   @ApiPropertyOptional({
-    example: '980101',
-    description: '생년월일 6자리 (YYMMDD)',
+    type: String,
+    example: '1998-01-01',
+    description: '생년월일 YYYY-MM-DD (기존 YYMMDD도 허용)',
   })
+  @Transform(({ value }) => parseBirthDate(value))
   @IsOptional()
-  @IsString()
-  birthdate?: string;
+  @IsDate({ message: '생년월일을 실제 존재하는 날짜로 입력해주세요.' })
+  @MinDate(new Date(1000, 0, 1), {
+    message: '생년월일은 1000년 이후로 입력해주세요.',
+  })
+  @MaxDate(() => new Date(), { message: '생년월일은 미래 날짜일 수 없습니다.' })
+  birthdate?: Date | null;
 
   @ApiPropertyOptional({
     description: '닉네임 (미입력시 랜덤 생성)',
