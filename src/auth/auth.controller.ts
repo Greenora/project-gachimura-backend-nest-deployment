@@ -29,6 +29,7 @@ import { SignupDto } from './dto/signup.dto';
 import { KakaoLoginDto } from './dto/kakao-login.dto';
 import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { PasswordResetService } from './password-reset.service';
+import { AuthRequestGuard } from './auth-request.guard';
 import {
   RequestPasswordResetDto,
   ResetPasswordDto,
@@ -36,7 +37,7 @@ import {
 
 @ApiTags('Auth')
 @Controller('auth')
-@UseGuards(ThrottlerGuard)
+@UseGuards(AuthRequestGuard, ThrottlerGuard)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -90,7 +91,12 @@ export class AuthController {
     const match = request.headers.cookie?.match(
       new RegExp(`(?:^|;\\s*)${name}=([^;]+)`),
     );
-    return match ? decodeURIComponent(match[1]) : undefined;
+    if (!match) return undefined;
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return undefined;
+    }
   }
 
   // 프론트에서 이메일 입력하면 이 API 호출해서 기존 회원인지 체크함

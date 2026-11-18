@@ -127,6 +127,7 @@ describe('HTTP cookie session contract', () => {
   it('refreshes using only the refresh cookie and keeps tokens out of the response body', async () => {
     const refreshed = await request(app.getHttpServer())
       .post('/api/auth/refresh')
+      .set('Content-Type', 'application/json')
       .set('Cookie', `language=ko; refreshToken=${refreshToken}`)
       .expect(201);
     expect(refreshed.body).toEqual({ expiresIn: 3600 });
@@ -139,7 +140,15 @@ describe('HTTP cookie session contract', () => {
       .get('/api/users/profile')
       .set('Cookie', cookies[0].split(';')[0])
       .expect(200);
-    await request(app.getHttpServer()).post('/api/auth/refresh').expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('Content-Type', 'application/json')
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('Content-Type', 'application/json')
+      .set('Cookie', 'refreshToken=%E0%A4%A')
+      .expect(401);
   });
 
   it('rejects missing, invalid, expired and refresh tokens on protected routes', async () => {
