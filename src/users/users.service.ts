@@ -27,6 +27,8 @@ interface KakaoUserResponse {
   id: number;
   kakao_account?: {
     email?: string;
+    is_email_valid?: boolean;
+    is_email_verified?: boolean;
   };
 }
 
@@ -162,7 +164,13 @@ export class UsersService {
     }
 
     const snsId = kakaoUser.id.toString();
-    const email: string | null = kakaoUser.kakao_account?.email || null;
+    const account = kakaoUser.kakao_account;
+    const email =
+      account?.is_email_valid === true &&
+      account.is_email_verified === true &&
+      typeof account.email === 'string'
+        ? account.email.trim() || null
+        : null;
 
     const randomNickPair = this.generateRandomNicknamePair();
 
@@ -174,10 +182,9 @@ export class UsersService {
           where: { email },
         });
         if (existingUser) {
-          existingUser.sns_id = snsId;
-          existingUser.provider = 'KAKAO';
-          user = await this.usersRepository.save(existingUser);
-          return { message: '카카오 계정 연동 성공', user };
+          throw new ConflictException(
+            '같은 이메일의 계정이 있습니다. 기존 로그인 방식으로 로그인해주세요.',
+          );
         }
       }
 

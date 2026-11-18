@@ -10,7 +10,10 @@ import { ChatGateway } from '../chat/chat.gateway';
 import { Party } from '../parties/entities/party.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
-import { SettlementItemDto } from './dto/update-settlement-items.dto';
+import {
+  MAX_SETTLEMENT_AMOUNT,
+  SettlementItemDto,
+} from './dto/update-settlement-items.dto';
 import { SettlementItemMember } from './entities/settlement-item-member.entity';
 import { SettlementItem } from './entities/settlement-item.entity';
 import { SettlementPayment } from './entities/settlement-payment.entity';
@@ -419,6 +422,31 @@ describe('잠금 후 정산 단계와 참여자 확인', () => {
 });
 
 describe('품목 수정 시 선택과 갱신 알림 보존', () => {
+  it.each([
+    [{ name: '초과 품목', price: MAX_SETTLEMENT_AMOUNT, quantity: 2 }],
+    [
+      { name: '첫 품목', price: MAX_SETTLEMENT_AMOUNT, quantity: 1 },
+      { name: '다음 품목', price: 1, quantity: 1 },
+    ],
+    [{ name: '안전 정수 초과', price: Number.MAX_SAFE_INTEGER, quantity: 2 }],
+  ])(
+    '저장 범위를 넘는 품목 합계는 기존 품목을 지우기 전에 거부한다 (%p)',
+    async (...items) => {
+      const fixture = scenario('DRAFT');
+      await expect(
+        fixture.service.updateItems(8, 1, { items }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(fixture.manager.delete).not.toHaveBeenCalled();
+      expect(fixture.manager.save).not.toHaveBeenCalled();
+      expect(fixture.manager.update).not.toHaveBeenCalled();
+      expect(fixture.selections).toHaveLength(1);
+      expect(fixture.queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+      expect(
+        fixture.chatGateway.notifySettlementUpdated,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
   it('이름·가격·수량을 수정해도 기존 품목 ID와 선택자를 유지한다', async () => {
     const fixture = scenario('DRAFT');
     await fixture.service.updateItems(8, 1, {

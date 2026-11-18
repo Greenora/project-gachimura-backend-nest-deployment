@@ -20,6 +20,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { SettlementsService } from './settlements.service';
 import { OcrService } from './ocr.service';
 import { CreateSettlementDto } from './dto/create-settlement.dto';
@@ -181,7 +182,15 @@ export class SettlementsController {
   }
 
   @Post('upload-receipt')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: 10,
+      ttl: minutes(1),
+      getTracker: (_request, context) =>
+        `ocr-user:${context.switchToHttp().getRequest<AuthenticatedRequest>().user.id}`,
+    },
+  })
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: '영수증 업로드 및 OCR 파싱' })
   @UseInterceptors(

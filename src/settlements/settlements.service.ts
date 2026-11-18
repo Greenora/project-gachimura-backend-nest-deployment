@@ -14,7 +14,10 @@ import { SettlementPayment } from './entities/settlement-payment.entity';
 import { Party } from '../parties/entities/party.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { ChatGateway } from '../chat/chat.gateway';
-import { UpdateSettlementItemsDto } from './dto/update-settlement-items.dto';
+import {
+  MAX_SETTLEMENT_AMOUNT,
+  UpdateSettlementItemsDto,
+} from './dto/update-settlement-items.dto';
 import { SelectItemsDto } from './dto/select-items.dto';
 import { toPublicUser } from '../users/user-response.mapper';
 
@@ -140,32 +143,36 @@ export class SettlementsService {
 
   // 정산 생성 (호스트 전용)
   async create(hostId: number, partyId: number) {
-    const party = await this.partyRepository.findOne({
-      where: { id: partyId },
-    });
-    if (!party) {
-      throw new NotFoundException('모임을 찾을 수 없습니다.');
-    }
-    if (party.hostId !== hostId) {
-      throw new ForbiddenException('호스트만 정산을 생성할 수 있습니다.');
-    }
+    const { settlement, created } = await this.dataSource.transaction(
+      async (manager) => {
+        // 아직 정산 행이 없는 동시 요청도 같은 모임 행에서 순서대로 처리한다.
+        const party = await manager.findOne(Party, {
+          where: { id: partyId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!party) {
+          throw new NotFoundException('모임을 찾을 수 없습니다.');
+        }
+        if (party.hostId !== hostId) {
+          throw new ForbiddenException('호스트만 정산을 생성할 수 있습니다.');
+        }
+        const existing = await manager.findOne(Settlement, {
+          where: { partyId, status: In(['DRAFT', 'SELECTING', 'CONFIRMED']) },
+        });
+        if (existing) return { settlement: existing, created: false };
 
-    // 이미 진행중인 정산이 있는지 확인
-    const existing = await this.settlementRepository.findOne({
-      where: { partyId, status: In(['DRAFT', 'SELECTING', 'CONFIRMED']) },
-    });
-    if (existing) {
-      return existing;
-    }
-
-    const settlement = this.settlementRepository.create({
-      partyId,
-      hostId,
-      status: 'DRAFT',
-    });
-    const saved = await this.settlementRepository.save(settlement);
-    this.notifyUpdated(partyId, saved.id);
-    return saved;
+        const saved = await manager.save(
+          this.settlementRepository.create({
+            partyId,
+            hostId,
+            status: 'DRAFT',
+          }),
+        );
+        return { settlement: saved, created: true };
+      },
+    );
+    if (created) this.notifyUpdated(partyId, settlement.id);
+    return settlement;
   }
 
   // 정산 상세 조회
@@ -250,6 +257,19 @@ export class SettlementsService {
       const removedIds = existingItems
         .filter((item) => !retainedIds.includes(item.id))
         .map((item) => item.id);
+      const totalAmount = dto.items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0,
+      );
+      if (
+        !Number.isSafeInteger(totalAmount) ||
+        totalAmount < 0 ||
+        totalAmount > MAX_SETTLEMENT_AMOUNT
+      ) {
+        throw new BadRequestException(
+          '정산 금액이 저장 가능한 범위를 초과했습니다.',
+        );
+      }
       if (removedIds.length) {
         await queryRunner.manager.delete(SettlementItem, {
           settlementId,
@@ -257,7 +277,6 @@ export class SettlementsService {
         });
       }
 
-      let totalAmount = 0;
       for (const item of dto.items) {
         const values = {
           name: item.name,
@@ -276,7 +295,6 @@ export class SettlementsService {
             this.itemRepository.create({ settlementId, ...values }),
           );
         }
-        totalAmount += item.price * item.quantity;
       }
 
       // 총액 업데이트
