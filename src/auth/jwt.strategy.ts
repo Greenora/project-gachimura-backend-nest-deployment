@@ -15,7 +15,12 @@ function accessTokenFromCookie(request: RequestWithCookies): string | null {
 
   const cookieHeader = request.headers?.cookie;
   const match = cookieHeader?.match(/(?:^|;\s*)accessToken=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 /**
