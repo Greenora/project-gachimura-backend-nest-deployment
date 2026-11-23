@@ -13,6 +13,12 @@ import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 import { AuthService } from '../auth/auth.service';
 import { isAllowedOrigin } from '../config/cors';
 import { PushService } from '../push/push.service';
+import { HttpException } from '@nestjs/common';
+import {
+  CHAT_RATE_LIMIT_CODE,
+  CHAT_RATE_LIMIT_MESSAGE,
+  ChatRateLimitService,
+} from './chat-rate-limit.service';
 
 interface ClientChatPayload {
   partyId: number;
@@ -23,7 +29,9 @@ interface JoinRoomPayload {
   partyId: number;
 }
 
-type ChatAcknowledgement = { ok: true } | { ok: false; error: string };
+type ChatAcknowledgement =
+  | { ok: true }
+  | { ok: false; error: string; code?: typeof CHAT_RATE_LIMIT_CODE };
 
 interface AuthenticatedSocketData {
   user?: {
@@ -59,6 +67,7 @@ export class ChatGateway implements OnGatewayConnection {
     private memberRepository: Repository<PartyMember>,
     private authService: AuthService,
     private pushService: PushService,
+    private chatRateLimit: ChatRateLimitService,
   ) {}
 
   private reject(client: Socket, error: string): ChatAcknowledgement {
@@ -182,6 +191,7 @@ export class ChatGateway implements OnGatewayConnection {
       if (!member) {
         return this.reject(client, '해당 모임의 멤버가 아닙니다.');
       }
+      await this.chatRateLimit.consume(userId);
       const message = payload.message.trim();
       const newChat = this.chatRepository.create({
         partyId: payload.partyId,
@@ -210,7 +220,14 @@ export class ChatGateway implements OnGatewayConnection {
         savedChat.id,
       ).catch(() => undefined);
       return { ok: true };
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpException && error.getStatus() === 429) {
+        return {
+          ok: false,
+          code: CHAT_RATE_LIMIT_CODE,
+          error: CHAT_RATE_LIMIT_MESSAGE,
+        };
+      }
       return this.reject(
         client,
         '메시지를 저장하지 못했습니다. 다시 시도해주세요.',

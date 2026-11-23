@@ -46,6 +46,7 @@ export class ChatMessageController {
   })
   @ApiResponse({ status: 401, description: '인증되지 않은 요청' })
   @ApiResponse({ status: 403, description: '승인된 모임 멤버가 아닌 사용자' })
+  @ApiResponse({ status: 429, description: '메시지 전송 횟수 초과' })
   create(
     @Body() createChatMessageDto: CreateChatMessageDto,
     @Req() req: { user: { id: number } },

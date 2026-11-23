@@ -5,11 +5,17 @@ import { ChatMessage } from '../chat-message/entities/chat-message.entity';
 import { PartyMember } from '../party-members/entities/party-member.entity';
 import { ChatGateway } from './chat.gateway';
 import { PushService } from '../push/push.service';
+import { ChatRateLimitService } from './chat-rate-limit.service';
 
 const createPushService = () =>
   ({
     notifyParty: jest.fn().mockResolvedValue(undefined),
   }) as unknown as PushService;
+
+const createChatRateLimit = () =>
+  ({
+    consume: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as ChatRateLimitService;
 
 describe('ChatGateway', () => {
   it('알림방은 클라이언트가 요청한 사용자 대신 검증된 JWT 사용자만 입장한다', async () => {
@@ -20,6 +26,7 @@ describe('ChatGateway', () => {
         verifyAccessToken: jest.fn().mockReturnValue({ sub: 5 }),
       } as unknown as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const join = jest.fn().mockResolvedValue(undefined);
     const client = {
@@ -53,6 +60,7 @@ describe('ChatGateway', () => {
           }),
         } as unknown as AuthService,
         createPushService(),
+        createChatRateLimit(),
       );
       const join = jest.fn();
       const disconnect = jest.fn();
@@ -88,6 +96,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     gateway.server = { to } as never;
     const client = {
@@ -135,6 +144,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     gateway.server = { to: jest.fn().mockReturnValue({ emit }) } as never;
     const client = {
@@ -162,6 +172,7 @@ describe('ChatGateway', () => {
       {} as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const emit = jest.fn();
     const to = jest.fn().mockReturnValue({ emit });
@@ -179,6 +190,7 @@ describe('ChatGateway', () => {
       {} as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const emit = jest.fn();
     const to = jest.fn().mockReturnValue({ emit });
@@ -218,6 +230,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const inRoom = jest.fn((room: string) => ({
       fetchSockets: jest
@@ -267,6 +280,7 @@ describe('ChatGateway', () => {
       {} as Repository<PartyMember>,
       { verifyAccessToken } as unknown as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const emit = jest.fn();
     const disconnect = jest.fn();
@@ -307,6 +321,7 @@ describe('ChatGateway', () => {
       memberRepository,
       {} as AuthService,
       { notifyParty } as unknown as PushService,
+      createChatRateLimit(),
     );
     const emit = jest.fn();
     gateway.server = {
@@ -347,6 +362,7 @@ describe('ChatGateway', () => {
       {} as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const emit = jest.fn();
     const client = {
@@ -372,6 +388,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     let finishJoin!: () => void;
     const join = jest.fn(
@@ -405,6 +422,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const join = jest.fn();
     const client = {
@@ -429,6 +447,7 @@ describe('ChatGateway', () => {
       { findOne } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     let finishJoin!: () => void;
     const rooms = new Set<string>();
@@ -472,6 +491,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const leave = jest.fn();
     const client = {
@@ -501,6 +521,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const broadcast = jest.fn();
     gateway.server = {
@@ -533,6 +554,7 @@ describe('ChatGateway', () => {
       } as unknown as Repository<PartyMember>,
       {} as AuthService,
       createPushService(),
+      createChatRateLimit(),
     );
     const join = jest.fn();
     const client = {

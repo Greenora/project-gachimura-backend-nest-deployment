@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ChatMessage } from './entities/chat-message.entity';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { PartyMember } from '../party-members/entities/party-member.entity';
+import { ChatRateLimitService } from '../chat/chat-rate-limit.service';
 
 @Injectable()
 export class ChatMessageService {
@@ -12,6 +13,7 @@ export class ChatMessageService {
     private chatMessageRepository: Repository<ChatMessage>,
     @InjectRepository(PartyMember)
     private memberRepository: Repository<PartyMember>,
+    private chatRateLimit: ChatRateLimitService,
   ) {}
 
   private async ensureMember(partyId: number, userId: number) {
@@ -51,6 +53,7 @@ export class ChatMessageService {
 
   async create(createChatMessageDto: CreateChatMessageDto, userId: number) {
     await this.ensureMember(createChatMessageDto.partyId, userId);
+    await this.chatRateLimit.consume(userId);
 
     const newMessage = this.chatMessageRepository.create({
       partyId: createChatMessageDto.partyId,
