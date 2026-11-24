@@ -12,6 +12,7 @@ import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
 import { toPublicUser } from '../users/user-response.mapper';
 import { ChatGateway } from '../chat/chat.gateway';
+import type { PersistedUpload } from '../common/failed-upload-cleanup.interceptor';
 
 @Injectable()
 export class PartiesService {
@@ -41,8 +42,11 @@ export class PartiesService {
   }
 
   // 모임 생성 (파일 업로드 포함)
-  async createWithFile(dto: CreatePartyDto, file?: any, hostId?: number) {
-    console.log('DTO RAW:', dto);
+  async createWithFile(
+    dto: CreatePartyDto,
+    file: PersistedUpload | undefined,
+    hostId: number,
+  ) {
     try {
       const {
         title,
@@ -57,49 +61,60 @@ export class PartiesService {
         meetingTime,
       } = dto;
 
-      if (!meetingDate || !meetingTime) {
-        throw new Error('meetingDate와 meetingTime은 필수입니다');
-      }
-      if (!title) {
-        throw new Error('title은 필수입니다');
+      if (
+        !title?.trim() ||
+        !meetingDate ||
+        !meetingTime ||
+        !Number.isSafeInteger(hostId) ||
+        hostId < 1
+      ) {
+        throw new BadRequestException('모임 제목과 날짜, 시간을 확인해주세요.');
       }
 
       const meetDate = new Date(`${meetingDate}T${meetingTime}:00`);
-
-      const party = this.partyRepository.create({
-        title,
-        content,
-        storeName: store_name,
-        address: address || null,
-        addressKo: address_ko || null,
-        addressJp: address_jp || null,
-        latitude: latitude ? Number(latitude) : null,
-        longitude: longitude ? Number(longitude) : null,
-        meetDate,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        thumbnailImage:
-          file && typeof file.filename === 'string' ? file.filename : null,
-        hostId: hostId,
-        status: 'RECRUITING',
-      } as Partial<Party>);
-
-      const savedParty = await this.partyRepository.save(party);
-
-      // 호스트를 파티 멤버로 자동 등록 (승인 상태)
-      if (hostId) {
-        const hostMember = this.partyMemberRepository.create({
-          partyId: savedParty.id,
-          userId: hostId,
-          status: 'APPROVED',
-          joinedAt: new Date(),
-        });
-        await this.partyMemberRepository.save(hostMember);
+      if (Number.isNaN(meetDate.getTime())) {
+        throw new BadRequestException('모임 날짜와 시간을 확인해주세요.');
       }
 
+      const savedParty = await this.partyRepository.manager.transaction(
+        async (manager) => {
+          const party = manager.create(Party, {
+            title,
+            content,
+            storeName: store_name,
+            address: address || null,
+            addressKo: address_ko || null,
+            addressJp: address_jp || null,
+            latitude: latitude ? Number(latitude) : null,
+            longitude: longitude ? Number(longitude) : null,
+            meetDate,
+            thumbnailImage: file?.filename ?? null,
+            hostId,
+            status: 'RECRUITING',
+          } as Partial<Party>);
+          const saved = await manager.save(Party, party);
+          await manager.save(
+            PartyMember,
+            manager.create(PartyMember, {
+              partyId: saved.id,
+              userId: hostId,
+              status: 'APPROVED',
+              joinedAt: new Date(),
+            }),
+          );
+          return saved;
+        },
+      );
+
+      // A later response failure must not remove a photo referenced by committed data.
+      if (file) file.persisted = true;
       return savedParty;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new BadRequestException(message);
+      if (error instanceof BadRequestException) throw error;
+      this.logger.warn('PARTY_CREATE_FAILED');
+      throw new BadRequestException(
+        '모임을 생성하지 못했습니다. 잠시 후 다시 시도해주세요.',
+      );
     }
   }
 

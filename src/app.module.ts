@@ -27,6 +27,7 @@ import { minutes, ThrottlerModule } from '@nestjs/throttler';
 import { HealthModule } from './health/health.module';
 import { PushModule } from './push/push.module';
 import { PushSubscription } from './push/entities/push-subscription.entity';
+import { RequestLimitStorage } from './common/request-limit.storage';
 
 @Module({
   imports: [
@@ -37,12 +38,10 @@ import { PushSubscription } from './push/entities/push-subscription.entity';
       envFilePath: ['.env.local', '.env'],
     }),
 
-    ThrottlerModule.forRoot([
-      {
-        ttl: minutes(1),
-        limit: 20,
-      },
-    ]),
+    ThrottlerModule.forRoot({
+      storage: new RequestLimitStorage(),
+      throttlers: [{ ttl: minutes(1), limit: 20 }],
+    }),
 
     //DB 설정 (Async 방식 유지)
     TypeOrmModule.forRootAsync({

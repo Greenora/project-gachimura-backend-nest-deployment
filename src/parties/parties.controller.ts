@@ -25,6 +25,11 @@ import {
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import {
+  FailedUploadCleanupInterceptor,
+  type PersistedUpload,
+} from '../common/failed-upload-cleanup.interceptor';
 import {
   ImageFileValidationPipe,
   imageUploadOptions,
@@ -88,20 +93,29 @@ export class PartiesController {
   }
 
   @Post()
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ThrottlerGuard)
+  @Throttle({
+    default: {
+      limit: 10,
+      ttl: minutes(1),
+      getTracker: (_request, context) =>
+        `party-create-user:${context.switchToHttp().getRequest<AuthenticatedRequest>().user.id}`,
+    },
+  })
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: '새 모임 생성',
     description: '새로운 장보기 모임을 생성합니다.',
   })
   @UseInterceptors(
+    FailedUploadCleanupInterceptor,
     FileInterceptor('thumbnail_image', imageUploadOptions(THUMBNAIL_MAX_SIZE)),
   )
   create(
     @Req() req: AuthenticatedRequest,
     @Body() createPartyDto: CreatePartyDto,
     @UploadedFile(new ImageFileValidationPipe())
-    file?: Express.Multer.File,
+    file?: PersistedUpload,
   ) {
     const hostId = req.user.id;
     return this.partiesService.createWithFile(createPartyDto, file, hostId);

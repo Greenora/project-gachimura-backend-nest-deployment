@@ -27,9 +27,10 @@ import { SendEmailVerificationDto } from './dto/send-email-verification.dto';
 import { VerifyEmailVerificationDto } from './dto/verify-email-verification.dto';
 import { SignupDto } from './dto/signup.dto';
 import { KakaoLoginDto } from './dto/kakao-login.dto';
-import { minutes, Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { minutes, Throttle } from '@nestjs/throttler';
 import { PasswordResetService } from './password-reset.service';
 import { AuthRequestGuard } from './auth-request.guard';
+import { AuthThrottlerGuard, authEmailTracker } from './auth-throttler.guard';
 import {
   RequestPasswordResetDto,
   ResetPasswordDto,
@@ -37,7 +38,7 @@ import {
 
 @ApiTags('Auth')
 @Controller('auth')
-@UseGuards(AuthRequestGuard, ThrottlerGuard)
+@UseGuards(AuthRequestGuard, AuthThrottlerGuard)
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
@@ -45,7 +46,9 @@ export class AuthController {
   ) {}
 
   @Post('password-reset/request')
-  @Throttle({ default: { limit: 3, ttl: minutes(10) } })
+  @Throttle({
+    default: { limit: 3, ttl: minutes(10), getTracker: authEmailTracker },
+  })
   requestPasswordReset(@Body() body: RequestPasswordResetDto) {
     return this.passwordReset.request(body.email.trim());
   }
@@ -102,7 +105,9 @@ export class AuthController {
   // 프론트에서 이메일 입력하면 이 API 호출해서 기존 회원인지 체크함
   // 있으면 로그인 화면, 없으면 회원가입 화면으로 전환
   @Post('check')
-  @Throttle({ default: { limit: 10, ttl: minutes(1) } })
+  @Throttle({
+    default: { limit: 10, ttl: minutes(1), getTracker: authEmailTracker },
+  })
   @ApiOperation({
     summary: '이메일 중복 체크',
     description: '해당 이메일로 가입된 유저가 있는지 확인',
@@ -125,7 +130,9 @@ export class AuthController {
   }
 
   @Post('email-verification/send')
-  @Throttle({ default: { limit: 3, ttl: minutes(10) } })
+  @Throttle({
+    default: { limit: 3, ttl: minutes(10), getTracker: authEmailTracker },
+  })
   @ApiOperation({
     summary: '회원가입 이메일 인증코드 발송',
     description: '회원가입 이메일로 6자리 인증코드를 발송합니다.',
@@ -145,7 +152,9 @@ export class AuthController {
   }
 
   @Post('email-verification/verify')
-  @Throttle({ default: { limit: 5, ttl: minutes(10) } })
+  @Throttle({
+    default: { limit: 5, ttl: minutes(10), getTracker: authEmailTracker },
+  })
   @ApiOperation({
     summary: '회원가입 이메일 인증코드 검증',
     description:
@@ -171,7 +180,9 @@ export class AuthController {
   // 이메일/비번으로 회원가입
   // 닉네임 안보내면 랜덤으로 생성됨 (한글/일본어 둘 다)
   @Post('signup')
-  @Throttle({ default: { limit: 5, ttl: minutes(10) } })
+  @Throttle({
+    default: { limit: 5, ttl: minutes(10), getTracker: authEmailTracker },
+  })
   @ApiOperation({
     summary: '이메일 회원가입',
     description: '이메일과 비밀번호로 회원가입. 닉네임 미입력시 랜덤 생성',
@@ -190,7 +201,9 @@ export class AuthController {
   // 이메일/비번 로그인
   // rememberMe 체크하면 refresh token 30일, 안하면 1일
   @Post('login')
-  @Throttle({ default: { limit: 5, ttl: minutes(1) } })
+  @Throttle({
+    default: { limit: 5, ttl: minutes(1), getTracker: authEmailTracker },
+  })
   @ApiOperation({
     summary: '이메일 로그인',
     description:
